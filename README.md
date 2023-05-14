@@ -1,5 +1,5 @@
 <div align="center">
-<img src="./miscellaneous/logo.svg" width="200"/>
+<img src="./miscellaneous/logo.svg" width="250"/>
 <h1><code>terraform-provider-freebox</code></h1>
 </div>
 
