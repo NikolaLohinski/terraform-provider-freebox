@@ -1,0 +1,16 @@
+[book]
+authors = ["Nikola Lohinski"]
+language = "en"
+multilingual = false
+src = "src"
+title = "terraform-provider-freebox"
+
+[output.html]
+default-theme = "light"
+git-repository-url = "https://github.com/nikolalohinski/terraform-provider-freebox"
+git-repository-icon = "fa-github"
+edit-url-template = "https://github.com/nikolalohinski/terraform-provider-freebox/-/edit/main/book/{path}"
+additional-js  = ["theme/terraform.js", "theme/scripts.js"]
+
+[output.html.print]
+enable = false

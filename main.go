@@ -6,23 +6,19 @@ import (
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
+
 	"github.com/nikolalohinski/terraform-provider-freebox/provider"
 )
 
-//go:generate terraform fmt -recursive ./examples/
-
-// Run the docs generation tool, check its repository for more information on how it works and how docs
-// can be customized.
-//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
-
 var (
-	// these will be set by the goreleaser configuration
-	// to appropriate values for the compiled binary.
+	// This will be set by the goreleaser configuration to appropriate values for the compiled binary.
 	version string = "dev"
-
-	// goreleaser can pass other information to the main package, such as the specific commit
-	// https://goreleaser.com/cookbooks/using-main.version/
 )
+
+// Run golang-ci reporting on the source code
+//go:generate go run github.com/golangci/golangci-lint/cmd/golangci-lint run --fix --timeout 3m ./...
+// Run the docs generation tool
+//go:generate go run github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs
 
 func main() {
 	var debug bool
@@ -31,7 +27,7 @@ func main() {
 	flag.Parse()
 
 	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/NikolaLohinski/freebox",
+		Address: "registry.terraform.io/nikolalohinski/freebox",
 		Debug:   debug,
 	}
 
