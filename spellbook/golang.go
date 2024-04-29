@@ -39,7 +39,7 @@ func (Go) Cover(ctx context.Context) error {
 	default:
 		cmd = "xdg-open"
 	}
-	args = append(args, "cover.html")
+	args = append(args, "coverage.html")
 
 	return sh.Run(cmd, args...)
 }

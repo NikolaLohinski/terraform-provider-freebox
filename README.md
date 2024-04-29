@@ -20,13 +20,13 @@
 
 ## Documentation
 
-Run the following to generate the contents of `docs/` folder:
+Run the following to generate the registry documentation in the `docs/` folder:
 
 ```shell
 mage docs:build
 ```
 
-Then serve the book using:
+Serve the book using:
 
 ```shell
 mage book:serve

@@ -28,6 +28,9 @@ func init() {
 	if err != nil {
 		panic(err)
 	}
+	if err := os.Setenv("MAGEFILE_VERBOSE", "true"); err != nil {
+		panic(err)
+	}
 
 	if err = os.Setenv("PATH", fmt.Sprintf("%s:%s", p, os.Getenv("PATH"))); err != nil {
 		panic(err)
