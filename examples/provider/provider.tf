@@ -5,4 +5,7 @@ terraform {
     }
   }
 }
-provider "freebox" {}
+provider "freebox" {
+  endpoint    = "http://mafreebox.freebox.fr"
+  api_version = "v10"
+}

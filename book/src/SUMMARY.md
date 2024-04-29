@@ -2,10 +2,10 @@
 
 # Overview
 
-- [Introduction](./introduction.md)
+- [Introduction](./README.md)
 
 # Documentation
 
-- [`freebox` provider](./provider.md)
+- [Provider](./provider.md)
   - [Resources]()
   - [Data Sources]()

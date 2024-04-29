@@ -33,6 +33,7 @@ website/vendor
 junit.xml
 coverage.txt
 coverage.xml
+coverage.html
 
 # Keep windows files with windows line endings
 *.winfile eol=crlf

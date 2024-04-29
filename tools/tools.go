@@ -1,8 +1,10 @@
+//go:build tools
+// +build tools
+
 package tools
 
 import (
-	//nolint:all
-	_ "github.com/golangci/golangci-lint/cmd/golangci-lint"
-	//nolint:all
+	_ "github.com/hashicorp/terraform"
 	_ "github.com/hashicorp/terraform-plugin-docs/cmd/tfplugindocs"
+	_ "github.com/onsi/ginkgo/v2/ginkgo"
 )
