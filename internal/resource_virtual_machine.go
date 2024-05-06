@@ -24,7 +24,7 @@ func NewVirtualMachineResource() resource.Resource {
 
 // virtualMachineResource defines the resource implementation.
 type virtualMachineResource struct {
-	freebox client.Client
+	client client.Client
 }
 
 // virtualMachineModel describes the resource data model.
@@ -46,11 +46,11 @@ type virtualMachineModel struct {
 	CloudHostName     types.String `tfsdk:"cloudinit_hostname"`
 }
 
-func (d *virtualMachineResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
+func (v *virtualMachineResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
 	resp.TypeName = req.ProviderTypeName + "_virtual_machine"
 }
 
-func (d *virtualMachineResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
+func (v *virtualMachineResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
 		Attributes: map[string]schema.Attribute{
@@ -90,6 +90,7 @@ func (d *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				MarkdownDescription: "Memory allocated to this VM in megabytes",
 			},
 			"os": schema.StringAttribute{
+				Optional:            true,
 				MarkdownDescription: "Type of OS used for this VM. Only used to set an icon for now",
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{
@@ -134,7 +135,7 @@ func (d *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 	}
 }
 
-func (d *virtualMachineResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
+func (v *virtualMachineResource) Configure(ctx context.Context, req resource.ConfigureRequest, resp *resource.ConfigureResponse) {
 	if req.ProviderData == nil {
 		return
 	}
@@ -143,15 +144,15 @@ func (d *virtualMachineResource) Configure(ctx context.Context, req resource.Con
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
-			fmt.Sprintf("Expected *client.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
+			fmt.Sprintf("Expected client.Client, got: %T. Please report this issue to the provider developers.", req.ProviderData),
 		)
 		return
 	}
 
-	d.freebox = client
+	v.client = client
 }
 
-func (d *virtualMachineResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
+func (v *virtualMachineResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data virtualMachineModel
 
 	// Read Terraform plan data into the model
@@ -166,7 +167,7 @@ func (d *virtualMachineResource) Create(ctx context.Context, req resource.Create
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (d *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
+func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var data virtualMachineModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
@@ -175,7 +176,7 @@ func (d *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	virtualMachine, err := d.freebox.GetVirtualMachine(ctx, data.ID.ValueInt64())
+	virtualMachine, err := v.client.GetVirtualMachine(ctx, data.ID.ValueInt64())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to get virtual machine",
@@ -207,7 +208,7 @@ func (d *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (d *virtualMachineResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
+func (v *virtualMachineResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
 	var data virtualMachineModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
@@ -221,7 +222,7 @@ func (d *virtualMachineResource) Update(ctx context.Context, req resource.Update
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-func (d *virtualMachineResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
+func (v *virtualMachineResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
 	var data virtualMachineModel
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)

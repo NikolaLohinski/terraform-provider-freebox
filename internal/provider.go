@@ -25,7 +25,7 @@ type freeboxProvider struct {
 
 // freeboxProviderModel describes the provider data model.
 type freeboxProviderModel struct {
-	Endpoint   types.String `tfsdk:"address"`
+	Endpoint   types.String `tfsdk:"endpoint"`
 	APIVersion types.String `tfsdk:"api_version"`
 	AppID      types.String `tfsdk:"app_id"`
 	Token      types.String `tfsdk:"token"`
@@ -88,7 +88,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	client, err := client.New(endpoint, version)
 	if err != nil {
-		resp.Diagnostics.AddError("failed to create freebox client", err.Error())
+		resp.Diagnostics.AddError("Failed to create freebox client", err.Error())
 		return
 	}
 
@@ -115,7 +115,9 @@ func (p *freeboxProvider) Resources(ctx context.Context) []func() resource.Resou
 }
 
 func (p *freeboxProvider) DataSources(ctx context.Context) []func() datasource.DataSource {
-	return []func() datasource.DataSource{}
+	return []func() datasource.DataSource{
+		NewAPIVersionDataSource,
+	}
 }
 
 func NewProvider(version string) func() provider.Provider {
