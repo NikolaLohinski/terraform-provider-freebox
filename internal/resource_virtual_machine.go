@@ -5,10 +5,12 @@ import (
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
+	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/nikolalohinski/free-go/client"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
 )
@@ -22,7 +24,7 @@ func NewVirtualMachineResource() resource.Resource {
 
 // virtualMachineResource defines the resource implementation.
 type virtualMachineResource struct {
-	freebox *client.Client
+	freebox client.Client
 }
 
 // virtualMachineModel describes the resource data model.
@@ -137,7 +139,7 @@ func (d *virtualMachineResource) Configure(ctx context.Context, req resource.Con
 		return
 	}
 
-	client, ok := req.ProviderData.(*client.Client)
+	client, ok := req.ProviderData.(client.Client)
 	if !ok {
 		resp.Diagnostics.AddError(
 			"Unexpected Resource Configure Type",
@@ -173,7 +175,34 @@ func (d *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		return
 	}
 
-	// TODO
+	virtualMachine, err := d.freebox.GetVirtualMachine(ctx, data.ID.ValueInt64())
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to get virtual machine",
+			err.Error(),
+		)
+		return
+	}
+	data.ID = basetypes.NewInt64Value(virtualMachine.ID)
+	data.Mac = basetypes.NewStringValue(virtualMachine.Mac)
+	data.Status = basetypes.NewStringValue(virtualMachine.Status)
+	data.Name = basetypes.NewStringValue(virtualMachine.Name)
+	data.DiskPath = basetypes.NewStringValue(string(virtualMachine.DiskPath))
+	data.DiskType = basetypes.NewStringValue(string(virtualMachine.DiskType))
+	data.CDPath = basetypes.NewStringValue(string(virtualMachine.CDPath))
+	data.Memory = basetypes.NewInt64Value(virtualMachine.Memory)
+	data.VCPUs = basetypes.NewInt64Value(virtualMachine.VCPUs)
+	data.OS = basetypes.NewStringValue(virtualMachine.OS)
+	data.EnableScreen = basetypes.NewBoolValue(virtualMachine.EnableScreen)
+	data.EnableCloudInit = basetypes.NewBoolValue(virtualMachine.EnableCloudInit)
+	data.CloudInitUserData = basetypes.NewStringValue(string(virtualMachine.CloudInitUserData))
+	data.CloudHostName = basetypes.NewStringValue(string(virtualMachine.CloudHostName))
+
+	usbPorts := []attr.Value{}
+	for _, port := range virtualMachine.BindUSBPorts {
+		usbPorts = append(usbPorts, basetypes.NewStringValue(port))
+	}
+	data.BindUSBPorts = basetypes.NewListValueMust(types.StringType, usbPorts)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
