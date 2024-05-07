@@ -1,0 +1,9 @@
+# `{{ .Name }}` (Data Source)
+
+{{ .Description | trimspace }}
+
+## Example
+
+{{ printf "examples/data.%s.tf" .Name | tffile }}
+
+{{ .SchemaMarkdown | trimspace }}

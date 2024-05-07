@@ -1,0 +1,9 @@
+# `{{ .Name }}` (Resource)
+
+{{ .Description | trimspace }}
+
+## Example
+
+{{ printf "examples/resource.%s.tf" .Name | tffile }}
+
+{{ .SchemaMarkdown | trimspace }}

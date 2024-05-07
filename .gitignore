@@ -42,7 +42,6 @@ coverage.html
 terraform-provider-*
 
 # Generated documentaton
-docs/*
 .version
 .published
 public/

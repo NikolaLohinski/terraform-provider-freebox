@@ -4,8 +4,9 @@
 
 - [Introduction](./README.md)
 
-# Documentation
+# Provider
 
-- [Provider](./provider.md)
+- [freebox](./provider.md)
   - [Resources]()
   - [Data Sources]()
+    - [freebox_api_version](./data-sources/api_version.md)

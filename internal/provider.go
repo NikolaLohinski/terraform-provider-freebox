@@ -75,7 +75,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 		endpoint = "http://mafreebox.freebox.fr"
 	}
 	if !data.Endpoint.IsNull() {
-		endpoint = data.Endpoint.String()
+		endpoint = data.Endpoint.ValueString()
 	}
 
 	version, ok := os.LookupEnv("FREEBOX_VERSION")
@@ -83,7 +83,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 		version = "latest"
 	}
 	if !data.APIVersion.IsNull() {
-		version = data.APIVersion.String()
+		version = data.APIVersion.ValueString()
 	}
 
 	client, err := client.New(endpoint, version)
@@ -93,13 +93,13 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 	}
 
 	if !data.AppID.IsNull() {
-		client = client.WithAppID(data.AppID.String())
+		client = client.WithAppID(data.AppID.ValueString())
 	} else if appID, ok := os.LookupEnv("FREEBOX_APP_ID"); ok {
 		client = client.WithAppID(appID)
 	}
 
 	if !data.Token.IsNull() {
-		client = client.WithPrivateToken(data.Token.String())
+		client = client.WithPrivateToken(data.Token.ValueString())
 	} else if token, ok := os.LookupEnv("FREEBOX_TOKEN"); ok {
 		client = client.WithPrivateToken(token)
 	}
@@ -110,7 +110,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 func (p *freeboxProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		NewVirtualMachineResource,
+		// NewVirtualMachineResource,
 	}
 }
 
