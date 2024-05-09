@@ -6,6 +6,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -44,6 +45,47 @@ type virtualMachineModel struct {
 	EnableCloudInit   types.Bool   `tfsdk:"enable_cloudinit"`
 	CloudInitUserData types.String `tfsdk:"cloudinit_userdata"`
 	CloudHostName     types.String `tfsdk:"cloudinit_hostname"`
+}
+
+func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
+	v.ID = basetypes.NewInt64Value(virtualMachine.ID)
+	v.Mac = basetypes.NewStringValue(virtualMachine.Mac)
+	v.Status = basetypes.NewStringValue(virtualMachine.Status)
+	v.Name = basetypes.NewStringValue(virtualMachine.Name)
+	v.DiskPath = basetypes.NewStringValue(string(virtualMachine.DiskPath))
+	v.DiskType = basetypes.NewStringValue(string(virtualMachine.DiskType))
+	v.CDPath = basetypes.NewStringValue(string(virtualMachine.CDPath))
+	v.Memory = basetypes.NewInt64Value(virtualMachine.Memory)
+	v.VCPUs = basetypes.NewInt64Value(virtualMachine.VCPUs)
+	v.OS = basetypes.NewStringValue(virtualMachine.OS)
+	v.EnableScreen = basetypes.NewBoolValue(virtualMachine.EnableScreen)
+	v.EnableCloudInit = basetypes.NewBoolValue(virtualMachine.EnableCloudInit)
+	v.CloudInitUserData = basetypes.NewStringValue(string(virtualMachine.CloudInitUserData))
+	v.CloudHostName = basetypes.NewStringValue(string(virtualMachine.CloudHostName))
+
+	usbPorts := []attr.Value{}
+	for _, port := range virtualMachine.BindUSBPorts {
+		usbPorts = append(usbPorts, basetypes.NewStringValue(port))
+	}
+	v.BindUSBPorts, diagnostics = basetypes.NewListValue(types.StringType, usbPorts)
+
+	return diagnostics
+}
+
+func (v *virtualMachineModel) toClientPayload(ctx context.Context) (payload freeboxTypes.VirtualMachinePayload, diagnostics diag.Diagnostics) {
+	payload.Name = v.Name.ValueString()
+	payload.DiskPath = freeboxTypes.Base64Path(v.DiskPath.ValueString())
+	payload.DiskType = v.DiskType.ValueString()
+	payload.CDPath = freeboxTypes.Base64Path(v.CDPath.ValueString())
+	payload.Memory = v.Memory.ValueInt64()
+	payload.VCPUs = v.VCPUs.ValueInt64()
+	payload.OS = v.OS.ValueString()
+	payload.EnableScreen = v.EnableScreen.ValueBool()
+	payload.EnableCloudInit = v.EnableCloudInit.ValueBool()
+	payload.CloudInitUserData = v.CloudInitUserData.ValueString()
+	payload.CloudHostName = v.CloudHostName.ValueString()
+
+	return payload, v.BindUSBPorts.ElementsAs(ctx, &payload.BindUSBPorts, false)
 }
 
 func (v *virtualMachineResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -126,7 +168,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				Optional:            true,
 				MarkdownDescription: "When cloudinit is enabled, hostname desired for this VM. Max 59 characters",
 			},
-			"bind_usbports": schema.ListAttribute{
+			"bind_usb_ports": schema.ListAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of ports that should be bound to this VM. Only one VM can use USB at given time, whether is uses only one or all USB ports. The list of system USB ports is available in VmSystemInfo. For example: `usb-external-type-a`, `usb-external-type-c`",
@@ -153,30 +195,53 @@ func (v *virtualMachineResource) Configure(ctx context.Context, req resource.Con
 }
 
 func (v *virtualMachineResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
-	var data virtualMachineModel
+	var model virtualMachineModel
 
 	// Read Terraform plan data into the model
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &model)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// TODO
+	payload, diagnostics := model.toClientPayload(ctx)
+	if diagnostics.HasError() {
+		resp.Diagnostics.Append(diagnostics...)
+		return
+	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	virtualMachine, err := v.client.CreateVirtualMachine(ctx, payload)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to create virtual machine",
+			err.Error(),
+		)
+		return
+	}
+
+	if d := model.fromClientType(virtualMachine); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
+	}
+
+	if d := resp.State.Set(ctx, &model); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
+	}
+
+	// TODO: start the VM and monitor its status
 }
 
 func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
-	var data virtualMachineModel
+	var model virtualMachineModel
 
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &model)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	virtualMachine, err := v.client.GetVirtualMachine(ctx, data.ID.ValueInt64())
+	virtualMachine, err := v.client.GetVirtualMachine(ctx, model.ID.ValueInt64())
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to get virtual machine",
@@ -184,52 +249,72 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		)
 		return
 	}
-	data.ID = basetypes.NewInt64Value(virtualMachine.ID)
-	data.Mac = basetypes.NewStringValue(virtualMachine.Mac)
-	data.Status = basetypes.NewStringValue(virtualMachine.Status)
-	data.Name = basetypes.NewStringValue(virtualMachine.Name)
-	data.DiskPath = basetypes.NewStringValue(string(virtualMachine.DiskPath))
-	data.DiskType = basetypes.NewStringValue(string(virtualMachine.DiskType))
-	data.CDPath = basetypes.NewStringValue(string(virtualMachine.CDPath))
-	data.Memory = basetypes.NewInt64Value(virtualMachine.Memory)
-	data.VCPUs = basetypes.NewInt64Value(virtualMachine.VCPUs)
-	data.OS = basetypes.NewStringValue(virtualMachine.OS)
-	data.EnableScreen = basetypes.NewBoolValue(virtualMachine.EnableScreen)
-	data.EnableCloudInit = basetypes.NewBoolValue(virtualMachine.EnableCloudInit)
-	data.CloudInitUserData = basetypes.NewStringValue(string(virtualMachine.CloudInitUserData))
-	data.CloudHostName = basetypes.NewStringValue(string(virtualMachine.CloudHostName))
 
-	usbPorts := []attr.Value{}
-	for _, port := range virtualMachine.BindUSBPorts {
-		usbPorts = append(usbPorts, basetypes.NewStringValue(port))
+	if d := model.fromClientType(virtualMachine); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
 	}
-	data.BindUSBPorts = basetypes.NewListValueMust(types.StringType, usbPorts)
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (v *virtualMachineResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
-	var data virtualMachineModel
+	var model virtualMachineModel
 
-	resp.Diagnostics.Append(req.Plan.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.Plan.Get(ctx, &model)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// TODO
+	payload, diagnostics := model.toClientPayload(ctx)
+	if diagnostics.HasError() {
+		resp.Diagnostics.Append(diagnostics...)
+		return
+	}
 
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	// TODO: stop the VM and monitor its status or just restart it if only the status is different
+
+	virtualMachine, err := v.client.UpdateVirtualMachine(ctx, model.ID.ValueInt64(), payload)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to update virtual machine",
+			err.Error(),
+		)
+		return
+	}
+
+	if d := model.fromClientType(virtualMachine); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
+	}
+
+	if d := resp.State.Set(ctx, &model); d.HasError() {
+		resp.Diagnostics.Append(d...)
+		return
+	}
+
+	// TODO: start the VM and monitor its status
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (v *virtualMachineResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
-	var data virtualMachineModel
+	var model virtualMachineModel
 
-	resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+	resp.Diagnostics.Append(req.State.Get(ctx, &model)...)
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	// TODO
+	// TODO: stop the VM and monitor its status
+
+	if err := v.client.DeleteVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to delete virtual machine",
+			err.Error(),
+		)
+		return
+	}
 }
