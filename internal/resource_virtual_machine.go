@@ -2,8 +2,11 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -16,8 +19,13 @@ import (
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
 )
 
-// Ensure provider defined types fully satisfy framework interfaces.
-var _ resource.Resource = &virtualMachineResource{}
+var (
+	_ resource.Resource = &virtualMachineResource{}
+
+	defaultCreateTimeout = time.Minute * 5
+	defaultUpdateTimeout = defaultCreateTimeout
+	defaultDeleteTimeout = defaultCreateTimeout
+)
 
 func NewVirtualMachineResource() resource.Resource {
 	return &virtualMachineResource{}
@@ -30,21 +38,22 @@ type virtualMachineResource struct {
 
 // virtualMachineModel describes the resource data model.
 type virtualMachineModel struct {
-	ID                types.Int64  `tfsdk:"id"`
-	Mac               types.String `tfsdk:"mac"`
-	Status            types.String `tfsdk:"status"`
-	Name              types.String `tfsdk:"name"`
-	DiskPath          types.String `tfsdk:"disk_path"`
-	DiskType          types.String `tfsdk:"disk_type"`
-	CDPath            types.String `tfsdk:"cd_path"`
-	Memory            types.Int64  `tfsdk:"memory"`
-	OS                types.String `tfsdk:"os"`
-	VCPUs             types.Int64  `tfsdk:"vcpus"`
-	EnableScreen      types.Bool   `tfsdk:"enable_screen"`
-	BindUSBPorts      types.List   `tfsdk:"bind_usb_ports"`
-	EnableCloudInit   types.Bool   `tfsdk:"enable_cloudinit"`
-	CloudInitUserData types.String `tfsdk:"cloudinit_userdata"`
-	CloudHostName     types.String `tfsdk:"cloudinit_hostname"`
+	ID                types.Int64    `tfsdk:"id"`
+	Mac               types.String   `tfsdk:"mac"`
+	Status            types.String   `tfsdk:"status"`
+	Name              types.String   `tfsdk:"name"`
+	DiskPath          types.String   `tfsdk:"disk_path"`
+	DiskType          types.String   `tfsdk:"disk_type"`
+	CDPath            types.String   `tfsdk:"cd_path"`
+	Memory            types.Int64    `tfsdk:"memory"`
+	OS                types.String   `tfsdk:"os"`
+	VCPUs             types.Int64    `tfsdk:"vcpus"`
+	EnableScreen      types.Bool     `tfsdk:"enable_screen"`
+	BindUSBPorts      types.List     `tfsdk:"bind_usb_ports"`
+	EnableCloudInit   types.Bool     `tfsdk:"enable_cloudinit"`
+	CloudInitUserData types.String   `tfsdk:"cloudinit_userdata"`
+	CloudHostName     types.String   `tfsdk:"cloudinit_hostname"`
+	Timeouts          timeouts.Value `tfsdk:"timeouts"`
 }
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
@@ -173,6 +182,14 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of ports that should be bound to this VM. Only one VM can use USB at given time, whether is uses only one or all USB ports. The list of system USB ports is available in VmSystemInfo. For example: `usb-external-type-a`, `usb-external-type-c`",
 			},
+			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
+				Create:            true,
+				CreateDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultCreateTimeout.String() + "`]",
+				Delete:            true,
+				DeleteDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultDeleteTimeout.String() + "`]",
+				Update:            true,
+				UpdateDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultUpdateTimeout.String() + "`]",
+			}),
 		},
 	}
 }
@@ -197,7 +214,6 @@ func (v *virtualMachineResource) Configure(ctx context.Context, req resource.Con
 func (v *virtualMachineResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var model virtualMachineModel
 
-	// Read Terraform plan data into the model
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &model)...)
 
 	if resp.Diagnostics.HasError() {
@@ -223,13 +239,87 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.Append(d...)
 		return
 	}
+	defer func() {
+		if d := resp.State.Set(ctx, &model); d.HasError() {
+			resp.Diagnostics.Append(d...)
+		}
+	}()
 
-	if d := resp.State.Set(ctx, &model); d.HasError() {
-		resp.Diagnostics.Append(d...)
+	createTimeout, diag := model.Timeouts.Create(ctx, defaultCreateTimeout)
+	if diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, createTimeout)
+	defer cancel()
+
+	channel, err := v.client.ListenEvents(ctx, []freeboxTypes.EventDescription{{
+		Source: "vm",
+		Name:   "state_changed",
+	}})
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to subscribe to virtual machine state change events",
+			err.Error(),
+		)
 		return
 	}
 
-	// TODO: start the VM and monitor its status
+	if err := v.client.StartVirtualMachine(ctx, virtualMachine.ID); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to start virtual machine",
+			err.Error(),
+		)
+		return
+	}
+
+	for {
+		select {
+		case event := <-channel:
+			if event.Error != nil {
+				resp.Diagnostics.AddError(
+					"Received an error while monitoring virtual machine state",
+					event.Error.Error(),
+				)
+				return
+			}
+			var stateChangeEvent struct {
+				ID     int64  `json:"id"`
+				Status string `json:"status"`
+			}
+			if err := json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
+				resp.Diagnostics.AddError(
+					"Failed to parse the received virtual machine state change event",
+					err.Error(),
+				)
+				return
+			}
+			if stateChangeEvent.ID != virtualMachine.ID {
+				// Ignore state change event that are unrelated to the VM that was just created
+				continue
+			}
+
+			model.Status = basetypes.NewStringValue(stateChangeEvent.Status)
+			switch stateChangeEvent.Status {
+			case freeboxTypes.RunningStatus:
+				return
+			case freeboxTypes.StartingStatus:
+				continue
+			default:
+				resp.Diagnostics.AddError(
+					"Virtual machine is in a unexpected state",
+					fmt.Sprintf("virtual machine `%s` (id: `%d`) is in state `%s` which is unexpected", virtualMachine.Name, virtualMachine.ID, stateChangeEvent.Status),
+				)
+				return
+			}
+		case <-ctx.Done():
+			resp.Diagnostics.AddError(
+				"Virtual machine state monitoring was stopped unexpectedly",
+				fmt.Sprintf("execution context was cancelled or reached the defined timeout (%s)", createTimeout.String()),
+			)
+			return
+		}
+	}
 }
 
 func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {

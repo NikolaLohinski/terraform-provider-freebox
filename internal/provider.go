@@ -12,6 +12,16 @@ import (
 	"github.com/nikolalohinski/free-go/client"
 )
 
+const (
+	defaultEndpoint = "http://mafreebox.freebox.fr"
+	defaultVersion  = "latest"
+
+	environmentVariableEndpoint = "FREEBOX_ENDPOINT"
+	environmentVariableVersion  = "FREEBOX_VERSION"
+	environmentVariableAppID    = "FREEBOX_APP_ID"
+	environmentVariableToken    = "FREEBOX_TOKEN"
+)
+
 // Ensure freeboxProvider satisfies various provider interfaces.
 var _ provider.Provider = &freeboxProvider{}
 
@@ -41,21 +51,21 @@ func (p *freeboxProvider) Schema(ctx context.Context, req provider.SchemaRequest
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The address of the Freebox [env: `FREEBOX_ENDPOINT`] [default: `http://mafreebox.freebox.fr`]",
+				MarkdownDescription: "The address of the Freebox [env: `" + environmentVariableEndpoint + "`] [default: `" + defaultEndpoint + "`]",
 			},
 			"api_version": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The version of the API to use [env: `FREEBOX_VERSION`] [default: `latest`]",
+				MarkdownDescription: "The version of the API to use [env: `" + environmentVariableVersion + "`] [default: `" + defaultVersion + "`]",
 			},
 			"app_id": schema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
-				MarkdownDescription: "The ID of the application you created to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `FREEBOX_APP_ID`]",
+				MarkdownDescription: "The ID of the application you created to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `" + environmentVariableAppID + "`]",
 			},
 			"token": schema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
-				MarkdownDescription: "The private token to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `FREEBOX_TOKEN`]",
+				MarkdownDescription: "The private token to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `" + environmentVariableToken + "`]",
 			},
 		},
 	}
@@ -70,17 +80,17 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	endpoint, ok := os.LookupEnv("FREEBOX_ENDPOINT")
+	endpoint, ok := os.LookupEnv(environmentVariableEndpoint)
 	if !ok {
-		endpoint = "http://mafreebox.freebox.fr"
+		endpoint = defaultEndpoint
 	}
 	if !data.Endpoint.IsNull() {
 		endpoint = data.Endpoint.ValueString()
 	}
 
-	version, ok := os.LookupEnv("FREEBOX_VERSION")
+	version, ok := os.LookupEnv(environmentVariableVersion)
 	if !ok {
-		version = "latest"
+		version = defaultVersion
 	}
 	if !data.APIVersion.IsNull() {
 		version = data.APIVersion.ValueString()
@@ -94,13 +104,13 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 	if !data.AppID.IsNull() {
 		client = client.WithAppID(data.AppID.ValueString())
-	} else if appID, ok := os.LookupEnv("FREEBOX_APP_ID"); ok {
+	} else if appID, ok := os.LookupEnv(environmentVariableAppID); ok {
 		client = client.WithAppID(appID)
 	}
 
 	if !data.Token.IsNull() {
 		client = client.WithPrivateToken(data.Token.ValueString())
-	} else if token, ok := os.LookupEnv("FREEBOX_TOKEN"); ok {
+	} else if token, ok := os.LookupEnv(environmentVariableToken); ok {
 		client = client.WithPrivateToken(token)
 	}
 
@@ -110,7 +120,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 
 func (p *freeboxProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
-		// NewVirtualMachineResource,
+		NewVirtualMachineResource,
 	}
 }
 
