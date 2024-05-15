@@ -12,6 +12,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -26,6 +27,11 @@ var (
 	defaultUpdateTimeout = defaultCreateTimeout
 	defaultDeleteTimeout = defaultCreateTimeout
 )
+
+type virtualMachineStateChangeEvent struct {
+	ID     int64  `json:"id"`
+	Status string `json:"status"`
+}
 
 func NewVirtualMachineResource() resource.Resource {
 	return &virtualMachineResource{}
@@ -54,6 +60,7 @@ type virtualMachineModel struct {
 	CloudInitUserData types.String   `tfsdk:"cloudinit_userdata"`
 	CloudHostName     types.String   `tfsdk:"cloudinit_hostname"`
 	Timeouts          timeouts.Value `tfsdk:"timeouts"`
+	KillTimeout       types.String   `tfsdk:"kill_timeout"`
 }
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
@@ -190,6 +197,14 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				Update:            true,
 				UpdateDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultUpdateTimeout.String() + "`]",
 			}),
+			"kill_timeout": schema.StringAttribute{
+				Optional: true,
+				Computed: true,
+				Default:  stringdefault.StaticString("30s"),
+				Validators: []validator.String{
+					stringvalidator.Duration(),
+				},
+			},
 		},
 	}
 }
@@ -283,10 +298,7 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 				)
 				return
 			}
-			var stateChangeEvent struct {
-				ID     int64  `json:"id"`
-				Status string `json:"status"`
-			}
+			var stateChangeEvent virtualMachineStateChangeEvent
 			if err := json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
 				resp.Diagnostics.AddError(
 					"Failed to parse the received virtual machine state change event",
@@ -398,7 +410,113 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 		return
 	}
 
-	// TODO: stop the VM and monitor its status
+	deleteTimeout, diag := model.Timeouts.Delete(ctx, defaultDeleteTimeout)
+	if diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, deleteTimeout)
+	defer cancel()
+
+	if model.Status.ValueString() != freeboxTypes.StoppedStatus {
+		channel, err := v.client.ListenEvents(ctx, []freeboxTypes.EventDescription{{
+			Source: "vm",
+			Name:   "state_changed",
+		}})
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to subscribe to virtual machine state change events",
+				err.Error(),
+			)
+			return
+		}
+
+		killTimeout, err := time.ParseDuration(model.KillTimeout.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed parse kill timeout",
+				err.Error(),
+			)
+			return
+		}
+		timeToKill := time.After(killTimeout)
+
+		if err := v.client.StopVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to stop virtual machine",
+				err.Error(),
+			)
+			return
+		}
+
+	MONITORING:
+		for {
+			select {
+			case <-time.After(time.Second * 5):
+				switch model.Status.ValueString() {
+				case freeboxTypes.StoppingStatus, freeboxTypes.StoppedStatus:
+					continue
+				default:
+					if err := v.client.StopVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
+						resp.Diagnostics.AddError(
+							"Failed to stop virtual machine",
+							err.Error(),
+						)
+						return
+					}
+				}
+			case event := <-channel:
+				if event.Error != nil {
+					resp.Diagnostics.AddError(
+						"Received an error while monitoring virtual machine state",
+						event.Error.Error(),
+					)
+					return
+				}
+				var stateChangeEvent virtualMachineStateChangeEvent
+				if err := json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to parse the received virtual machine state change event",
+						err.Error(),
+					)
+					return
+				}
+				if stateChangeEvent.ID != model.ID.ValueInt64() {
+					// Ignore state change event that are unrelated to the VM that was just created
+					continue
+				}
+
+				model.Status = basetypes.NewStringValue(stateChangeEvent.Status)
+				switch stateChangeEvent.Status {
+				case freeboxTypes.StoppedStatus:
+					break MONITORING
+				case freeboxTypes.StoppingStatus:
+					continue
+				case freeboxTypes.RunningStatus:
+					continue
+				default:
+					resp.Diagnostics.AddError(
+						"Virtual machine is in a unexpected state",
+						fmt.Sprintf("virtual machine `%s` (id: `%d`) is in state `%s` which is unexpected", model.Name.ValueString(), model.ID.ValueInt64(), stateChangeEvent.Status),
+					)
+					return
+				}
+			case <-timeToKill:
+				if err := v.client.KillVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
+					resp.Diagnostics.AddError(
+						"Failed to kill virtual machine",
+						err.Error(),
+					)
+				}
+			case <-ctx.Done():
+				resp.Diagnostics.AddError(
+					"Virtual machine state monitoring was stopped unexpectedly",
+					fmt.Sprintf("execution context was cancelled or reached the defined timeout (%s)", deleteTimeout.String()),
+				)
+				return
+			}
+		}
+	}
 
 	if err := v.client.DeleteVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
 		resp.Diagnostics.AddError(
