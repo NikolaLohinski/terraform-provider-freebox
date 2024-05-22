@@ -70,21 +70,23 @@ func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.Virtual
 	v.Name = basetypes.NewStringValue(virtualMachine.Name)
 	v.DiskPath = basetypes.NewStringValue(string(virtualMachine.DiskPath))
 	v.DiskType = basetypes.NewStringValue(string(virtualMachine.DiskType))
-	v.CDPath = basetypes.NewStringValue(string(virtualMachine.CDPath))
 	v.Memory = basetypes.NewInt64Value(virtualMachine.Memory)
 	v.VCPUs = basetypes.NewInt64Value(virtualMachine.VCPUs)
-	v.OS = basetypes.NewStringValue(virtualMachine.OS)
+	v.CDPath = basetypes.NewStringValue(string(virtualMachine.CDPath))
+	if virtualMachine.OS != "" {
+		v.OS = basetypes.NewStringValue(virtualMachine.OS)
+	}
 	v.EnableScreen = basetypes.NewBoolValue(virtualMachine.EnableScreen)
 	v.EnableCloudInit = basetypes.NewBoolValue(virtualMachine.EnableCloudInit)
 	v.CloudInitUserData = basetypes.NewStringValue(string(virtualMachine.CloudInitUserData))
 	v.CloudHostName = basetypes.NewStringValue(string(virtualMachine.CloudHostName))
-
-	usbPorts := []attr.Value{}
-	for _, port := range virtualMachine.BindUSBPorts {
-		usbPorts = append(usbPorts, basetypes.NewStringValue(port))
+	if len(virtualMachine.BindUSBPorts) > 0 {
+		usbPorts := []attr.Value{}
+		for _, port := range virtualMachine.BindUSBPorts {
+			usbPorts = append(usbPorts, basetypes.NewStringValue(port))
+		}
+		v.BindUSBPorts, diagnostics = basetypes.NewListValue(types.StringType, usbPorts)
 	}
-	v.BindUSBPorts, diagnostics = basetypes.NewListValue(types.StringType, usbPorts)
-
 	return diagnostics
 }
 
@@ -95,13 +97,15 @@ func (v *virtualMachineModel) toClientPayload(ctx context.Context) (payload free
 	payload.CDPath = freeboxTypes.Base64Path(v.CDPath.ValueString())
 	payload.Memory = v.Memory.ValueInt64()
 	payload.VCPUs = v.VCPUs.ValueInt64()
-	payload.OS = v.OS.ValueString()
-	payload.EnableScreen = v.EnableScreen.ValueBool()
-	payload.EnableCloudInit = v.EnableCloudInit.ValueBool()
+	if !v.OS.IsNull() && !v.OS.IsUnknown() {
+		payload.OS = v.OS.ValueString()
+	}
 	payload.CloudInitUserData = v.CloudInitUserData.ValueString()
 	payload.CloudHostName = v.CloudHostName.ValueString()
-
-	return payload, v.BindUSBPorts.ElementsAs(ctx, &payload.BindUSBPorts, false)
+	if !v.BindUSBPorts.IsNull() && !v.BindUSBPorts.IsUnknown() {
+		return payload, v.BindUSBPorts.ElementsAs(ctx, &payload.BindUSBPorts, false)
+	}
+	return payload, nil
 }
 
 func (v *virtualMachineResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -112,7 +116,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
 		Attributes: map[string]schema.Attribute{
-			"id": schema.StringAttribute{
+			"id": schema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Unique identifier of the VM",
 			},
@@ -124,7 +128,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				Computed:            true,
 				MarkdownDescription: "VM status",
 			},
-			"name": schema.BoolAttribute{
+			"name": schema.StringAttribute{
 				Required:            true,
 				MarkdownDescription: "Name of this VM. Max 31 characters",
 			},
@@ -141,6 +145,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"cd_path": schema.StringAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Path to CDROM device ISO image",
 			},
 			"memory": schema.Int64Attribute{
@@ -149,6 +154,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"os": schema.StringAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Type of OS used for this VM. Only used to set an icon for now",
 				Validators: []validator.String{
 					stringvalidator.OneOf([]string{
@@ -170,18 +176,22 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"enable_screen": schema.BoolAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Whether or not this VM should have a virtual screen, to use with the VNC websocket protocol",
 			},
 			"enable_cloudinit": schema.BoolAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "Whether or not to enable passing data through `cloudinit`. This uses the NoCloud iso image method; it will add a virtual CDROM drive (distinct from the one passed by `cd_path`) with the data in `cloudinit_userdata` and `cloudinit_hostname` when enabled",
 			},
-			"cloudinit_userdata": schema.BoolAttribute{
+			"cloudinit_userdata": schema.StringAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "When cloudinit is enabled, raw YAML to be passed in the user-data file. Maximum 32767 characters",
 			},
-			"cloudinit_hostname": schema.BoolAttribute{
+			"cloudinit_hostname": schema.StringAttribute{
 				Optional:            true,
+				Computed:            true,
 				MarkdownDescription: "When cloudinit is enabled, hostname desired for this VM. Max 59 characters",
 			},
 			"bind_usb_ports": schema.ListAttribute{

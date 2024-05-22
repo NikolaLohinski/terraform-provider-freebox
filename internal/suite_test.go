@@ -12,7 +12,6 @@ import (
 
 func TestProvider(t *testing.T) {
 	RegisterFailHandler(Fail)
-
 	RunSpecs(t, "internal")
 }
 

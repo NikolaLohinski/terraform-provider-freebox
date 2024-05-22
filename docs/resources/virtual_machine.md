@@ -23,15 +23,15 @@ resource "freebox_virtual_machine" "example" {
 - `disk_path` (String) Path to the hard disk image of this VM
 - `disk_type` (String) Type of disk image
 - `memory` (Number) Memory allocated to this VM in megabytes
-- `name` (Boolean) Name of this VM. Max 31 characters
+- `name` (String) Name of this VM. Max 31 characters
 - `vcpus` (Number) Number of virtual CPUs to allocate to this VM
 
 ### Optional
 
 - `bind_usb_ports` (List of String) List of ports that should be bound to this VM. Only one VM can use USB at given time, whether is uses only one or all USB ports. The list of system USB ports is available in VmSystemInfo. For example: `usb-external-type-a`, `usb-external-type-c`
 - `cd_path` (String) Path to CDROM device ISO image
-- `cloudinit_hostname` (Boolean) When cloudinit is enabled, hostname desired for this VM. Max 59 characters
-- `cloudinit_userdata` (Boolean) When cloudinit is enabled, raw YAML to be passed in the user-data file. Maximum 32767 characters
+- `cloudinit_hostname` (String) When cloudinit is enabled, hostname desired for this VM. Max 59 characters
+- `cloudinit_userdata` (String) When cloudinit is enabled, raw YAML to be passed in the user-data file. Maximum 32767 characters
 - `enable_cloudinit` (Boolean) Whether or not to enable passing data through `cloudinit`. This uses the NoCloud iso image method; it will add a virtual CDROM drive (distinct from the one passed by `cd_path`) with the data in `cloudinit_userdata` and `cloudinit_hostname` when enabled
 - `enable_screen` (Boolean) Whether or not this VM should have a virtual screen, to use with the VNC websocket protocol
 - `kill_timeout` (String)
@@ -40,7 +40,7 @@ resource "freebox_virtual_machine" "example" {
 
 ### Read-Only
 
-- `id` (String) Unique identifier of the VM
+- `id` (Number) Unique identifier of the VM
 - `mac` (String) VM ethernet interface MAC address
 - `status` (String) VM status
 
