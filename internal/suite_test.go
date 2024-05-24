@@ -1,6 +1,7 @@
 package internal_test
 
 import (
+	"os"
 	"testing"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
@@ -19,4 +20,21 @@ var (
 	testAccProtoV6ProviderFactories = map[string]func() (tfprotov6.ProviderServer, error){
 		"freebox": providerserver.NewProtocol6WithError(internal.NewProvider("test")()),
 	}
+	endpoint      = os.Getenv("FREEBOX_ENDPOINT")
+	version       = os.Getenv("FREEBOX_VERSION")
+	appID         = os.Getenv("FREEBOX_APP_ID")
+	token         = os.Getenv("FREEBOX_TOKEN")
+	providerBlock = `
+		provider "freebox" {
+			app_id = "` + appID + `"
+			token  = "` + token + `"
+		}
+	`
 )
+
+func Must[T interface{}](r T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return r
+}

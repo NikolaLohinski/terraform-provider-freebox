@@ -102,13 +102,13 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 		return
 	}
 
-	if !data.AppID.IsNull() {
+	if !data.AppID.IsNull() && !data.AppID.IsUnknown() {
 		client = client.WithAppID(data.AppID.ValueString())
 	} else if appID, ok := os.LookupEnv(environmentVariableAppID); ok {
 		client = client.WithAppID(appID)
 	}
 
-	if !data.Token.IsNull() {
+	if !data.Token.IsNull() && !data.Token.IsUnknown() {
 		client = client.WithPrivateToken(data.Token.ValueString())
 	} else if token, ok := os.LookupEnv(environmentVariableToken); ok {
 		client = client.WithPrivateToken(token)
