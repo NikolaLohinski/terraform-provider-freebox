@@ -342,69 +342,14 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
-	channel, err := v.client.ListenEvents(ctx, []freeboxTypes.EventDescription{{
-		Source: "vm",
-		Name:   "state_changed",
-	}})
+	status, err := v.start(ctx, virtualMachine.ID)
+	model.Status = basetypes.NewStringValue(status)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to subscribe to virtual machine state change events",
-			err.Error(),
-		)
-		return
-	}
-
-	if err := v.client.StartVirtualMachine(ctx, virtualMachine.ID); err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to start virtual machine",
 			err.Error(),
 		)
 		return
-	}
-
-	for {
-		select {
-		case event := <-channel:
-			if event.Error != nil {
-				resp.Diagnostics.AddError(
-					"Received an error while monitoring virtual machine state",
-					event.Error.Error(),
-				)
-				return
-			}
-			var stateChangeEvent virtualMachineStateChangeEvent
-			if err := json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
-				resp.Diagnostics.AddError(
-					"Failed to parse the received virtual machine state change event",
-					err.Error(),
-				)
-				return
-			}
-			if stateChangeEvent.ID != virtualMachine.ID {
-				// Ignore state change event that are unrelated to the VM that was just created
-				continue
-			}
-
-			model.Status = basetypes.NewStringValue(stateChangeEvent.Status)
-			switch stateChangeEvent.Status {
-			case freeboxTypes.RunningStatus:
-				return
-			case freeboxTypes.StartingStatus:
-				continue
-			default:
-				resp.Diagnostics.AddError(
-					"Virtual machine is in a unexpected state",
-					fmt.Sprintf("virtual machine `%s` (id: `%d`) is in state `%s` which is unexpected", virtualMachine.Name, virtualMachine.ID, stateChangeEvent.Status),
-				)
-				return
-			}
-		case <-ctx.Done():
-			resp.Diagnostics.AddError(
-				"Virtual machine state monitoring was stopped unexpectedly",
-				fmt.Sprintf("execution context was cancelled or reached the defined timeout (%s)", createTimeout.String()),
-			)
-			return
-		}
 	}
 }
 
@@ -497,99 +442,19 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 	defer cancel()
 
 	if model.Status.ValueString() != freeboxTypes.StoppedStatus {
-		channel, err := v.client.ListenEvents(ctx, []freeboxTypes.EventDescription{{
-			Source: "vm",
-			Name:   "state_changed",
-		}})
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to subscribe to virtual machine state change events",
-				err.Error(),
-			)
-			return
-		}
-
 		killTimeout, diag := timeouts.Kill.ValueDuration()
 		if diag.HasError() {
 			resp.Diagnostics.Append(diag...)
 			return
 		}
-		timeToKill := time.After(killTimeout)
-
-		if err := v.client.StopVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
+		status, err := v.stop(ctx, model.ID.ValueInt64(), killTimeout)
+		model.Status = basetypes.NewStringValue(status)
+		if err != nil {
 			resp.Diagnostics.AddError(
 				"Failed to stop virtual machine",
 				err.Error(),
 			)
 			return
-		}
-
-	MONITORING:
-		for {
-			select {
-			case <-time.After(time.Second * 5):
-				switch model.Status.ValueString() {
-				case freeboxTypes.StoppingStatus, freeboxTypes.StoppedStatus:
-					continue
-				default:
-					if err := v.client.StopVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
-						resp.Diagnostics.AddError(
-							"Failed to stop virtual machine",
-							err.Error(),
-						)
-						return
-					}
-				}
-			case event := <-channel:
-				if event.Error != nil {
-					resp.Diagnostics.AddError(
-						"Received an error while monitoring virtual machine state",
-						event.Error.Error(),
-					)
-					return
-				}
-				var stateChangeEvent virtualMachineStateChangeEvent
-				if err := json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
-					resp.Diagnostics.AddError(
-						"Failed to parse the received virtual machine state change event",
-						err.Error(),
-					)
-					return
-				}
-				if stateChangeEvent.ID != model.ID.ValueInt64() {
-					// Ignore state change event that are unrelated to the VM that was just created
-					continue
-				}
-
-				model.Status = basetypes.NewStringValue(stateChangeEvent.Status)
-				switch stateChangeEvent.Status {
-				case freeboxTypes.StoppedStatus:
-					break MONITORING
-				case freeboxTypes.StoppingStatus:
-					continue
-				case freeboxTypes.RunningStatus:
-					continue
-				default:
-					resp.Diagnostics.AddError(
-						"Virtual machine is in a unexpected state",
-						fmt.Sprintf("virtual machine `%s` (id: `%d`) is in state `%s` which is unexpected", model.Name.ValueString(), model.ID.ValueInt64(), stateChangeEvent.Status),
-					)
-					return
-				}
-			case <-timeToKill:
-				if err := v.client.KillVirtualMachine(ctx, model.ID.ValueInt64()); err != nil {
-					resp.Diagnostics.AddError(
-						"Failed to kill virtual machine",
-						err.Error(),
-					)
-				}
-			case <-ctx.Done():
-				resp.Diagnostics.AddError(
-					"Virtual machine state monitoring was stopped unexpectedly",
-					fmt.Sprintf("execution context was cancelled or reached the defined timeout (%s)", deleteTimeout.String()),
-				)
-				return
-			}
 		}
 	}
 
@@ -599,5 +464,110 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 			err.Error(),
 		)
 		return
+	}
+}
+
+func (v *virtualMachineResource) start(ctx context.Context, identifier int64) (status string, err error) {
+	var channel chan freeboxTypes.Event
+	channel, err = v.client.ListenEvents(ctx, []freeboxTypes.EventDescription{{
+		Source: "vm",
+		Name:   "state_changed",
+	}})
+	if err != nil {
+		return status, fmt.Errorf("failed to subscribe to virtual machine state change events: %s", err)
+	}
+
+	if err = v.client.StartVirtualMachine(ctx, identifier); err != nil {
+		return status, fmt.Errorf("failed to start virtual machine: %s", err)
+	}
+
+	for {
+		select {
+		case event := <-channel:
+			if event.Error != nil {
+				return status, fmt.Errorf("received an error while monitoring virtual machine state: %s", event.Error)
+			}
+			var stateChangeEvent virtualMachineStateChangeEvent
+			if err = json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
+				return status, fmt.Errorf("failed to parse the received virtual machine state change event: %s", err)
+			}
+			if stateChangeEvent.ID != identifier {
+				// Ignore state change event that are unrelated to the VM that was just created
+				continue
+			}
+
+			status = stateChangeEvent.Status
+			switch stateChangeEvent.Status {
+			case freeboxTypes.RunningStatus:
+				return status, err
+			case freeboxTypes.StartingStatus:
+				continue
+			default:
+				return status, fmt.Errorf("virtual machine `%d` is in state `%s` which is unexpected", identifier, stateChangeEvent.Status)
+			}
+		case <-ctx.Done():
+			return status, fmt.Errorf("starting virtual machine `%d` was cancelled or reached timeout", identifier)
+		}
+	}
+}
+
+func (v *virtualMachineResource) stop(ctx context.Context, identifier int64, killTimeout time.Duration) (status string, err error) {
+	var channel chan freeboxTypes.Event
+	channel, err = v.client.ListenEvents(ctx, []freeboxTypes.EventDescription{{
+		Source: "vm",
+		Name:   "state_changed",
+	}})
+	if err != nil {
+		return status, fmt.Errorf("failed to subscribe to virtual machine state change events: %s", err)
+	}
+
+	timeToKill := time.After(killTimeout)
+
+	if err = v.client.StopVirtualMachine(ctx, identifier); err != nil {
+		return status, fmt.Errorf("failed to stop virtual machine: %s", err)
+	}
+
+	for {
+		select {
+		case <-time.After(time.Second * 5):
+			switch status {
+			case freeboxTypes.StoppingStatus, freeboxTypes.StoppedStatus:
+				continue
+			default:
+				if err = v.client.StopVirtualMachine(ctx, identifier); err != nil {
+					return status, fmt.Errorf("failed to stop virtual machine: %s", err)
+				}
+			}
+		case event := <-channel:
+			if event.Error != nil {
+				return status, fmt.Errorf("received an error while monitoring virtual machine state: %s", event.Error)
+			}
+			var stateChangeEvent virtualMachineStateChangeEvent
+			if err = json.Unmarshal(event.Notification.Result, &stateChangeEvent); err != nil {
+				return status, fmt.Errorf("failed to parse the received virtual machine state change event: %s", err)
+			}
+			if stateChangeEvent.ID != identifier {
+				// Ignore state change event that are unrelated to the VM that was just created
+				continue
+			}
+
+			status = stateChangeEvent.Status
+			switch stateChangeEvent.Status {
+			case freeboxTypes.StoppedStatus:
+				return status, nil
+			case freeboxTypes.StoppingStatus:
+				continue
+			case freeboxTypes.RunningStatus:
+				continue
+			default:
+				return status, fmt.Errorf("virtual machine `%d` is in state `%s` which is unexpected", identifier, stateChangeEvent.Status)
+			}
+		case <-timeToKill:
+			if err = v.client.KillVirtualMachine(ctx, identifier); err != nil {
+				return status, fmt.Errorf("failed to kill virtual machine: %s", err)
+			}
+		case <-ctx.Done():
+			return status, fmt.Errorf("stopping virtual machine `%d` was cancelled or reached timeout", identifier)
+		}
 	}
 }
