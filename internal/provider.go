@@ -84,7 +84,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 	if !ok {
 		endpoint = defaultEndpoint
 	}
-	if !data.Endpoint.IsNull() {
+	if !data.Endpoint.IsNull() && !data.Endpoint.IsUnknown() {
 		endpoint = data.Endpoint.ValueString()
 	}
 
@@ -92,7 +92,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 	if !ok {
 		version = defaultVersion
 	}
-	if !data.APIVersion.IsNull() {
+	if !data.APIVersion.IsNull() && !data.APIVersion.IsUnknown() {
 		version = data.APIVersion.ValueString()
 	}
 
