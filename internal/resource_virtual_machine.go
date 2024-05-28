@@ -6,12 +6,13 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-timeouts/resource/timeouts"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -22,10 +23,6 @@ import (
 
 var (
 	_ resource.Resource = &virtualMachineResource{}
-
-	defaultCreateTimeout = time.Minute * 5
-	defaultUpdateTimeout = defaultCreateTimeout
-	defaultDeleteTimeout = defaultCreateTimeout
 )
 
 type virtualMachineStateChangeEvent struct {
@@ -44,23 +41,30 @@ type virtualMachineResource struct {
 
 // virtualMachineModel describes the resource data model.
 type virtualMachineModel struct {
-	ID                types.Int64    `tfsdk:"id"`
-	Mac               types.String   `tfsdk:"mac"`
-	Status            types.String   `tfsdk:"status"`
-	Name              types.String   `tfsdk:"name"`
-	DiskPath          types.String   `tfsdk:"disk_path"`
-	DiskType          types.String   `tfsdk:"disk_type"`
-	CDPath            types.String   `tfsdk:"cd_path"`
-	Memory            types.Int64    `tfsdk:"memory"`
-	OS                types.String   `tfsdk:"os"`
-	VCPUs             types.Int64    `tfsdk:"vcpus"`
-	EnableScreen      types.Bool     `tfsdk:"enable_screen"`
-	BindUSBPorts      types.List     `tfsdk:"bind_usb_ports"`
-	EnableCloudInit   types.Bool     `tfsdk:"enable_cloudinit"`
-	CloudInitUserData types.String   `tfsdk:"cloudinit_userdata"`
-	CloudHostName     types.String   `tfsdk:"cloudinit_hostname"`
-	Timeouts          timeouts.Value `tfsdk:"timeouts"`
-	KillTimeout       types.String   `tfsdk:"kill_timeout"`
+	ID                types.Int64  `tfsdk:"id"`
+	Mac               types.String `tfsdk:"mac"`
+	Status            types.String `tfsdk:"status"`
+	Name              types.String `tfsdk:"name"`
+	DiskPath          types.String `tfsdk:"disk_path"`
+	DiskType          types.String `tfsdk:"disk_type"`
+	CDPath            types.String `tfsdk:"cd_path"`
+	Memory            types.Int64  `tfsdk:"memory"`
+	OS                types.String `tfsdk:"os"`
+	VCPUs             types.Int64  `tfsdk:"vcpus"`
+	EnableScreen      types.Bool   `tfsdk:"enable_screen"`
+	BindUSBPorts      types.List   `tfsdk:"bind_usb_ports"`
+	EnableCloudInit   types.Bool   `tfsdk:"enable_cloudinit"`
+	CloudInitUserData types.String `tfsdk:"cloudinit_userdata"`
+	CloudHostName     types.String `tfsdk:"cloudinit_hostname"`
+	Timeouts          types.Object `tfsdk:"timeouts"`
+}
+
+type timeoutsModel struct {
+	Create timetypes.Duration `tfsdk:"create"`
+	Update timetypes.Duration `tfsdk:"update"`
+	Read   timetypes.Duration `tfsdk:"read"`
+	Delete timetypes.Duration `tfsdk:"delete"`
+	Kill   timetypes.Duration `tfsdk:"kill"`
 }
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
@@ -199,20 +203,76 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of ports that should be bound to this VM. Only one VM can use USB at given time, whether is uses only one or all USB ports. The list of system USB ports is available in VmSystemInfo. For example: `usb-external-type-a`, `usb-external-type-c`",
 			},
-			"timeouts": timeouts.Attributes(ctx, timeouts.Opts{
-				Create:            true,
-				CreateDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultCreateTimeout.String() + "`]",
-				Delete:            true,
-				DeleteDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultDeleteTimeout.String() + "`]",
-				Update:            true,
-				UpdateDescription: "A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `" + defaultUpdateTimeout.String() + "`]",
-			}),
-			"kill_timeout": schema.StringAttribute{
-				Optional: true,
-				Computed: true,
-				Default:  stringdefault.StaticString("30s"),
-				Validators: []validator.String{
-					stringvalidator.Duration(),
+			"timeouts": schema.SingleNestedAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Timeouts for various operations expressed as strings such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours)",
+				Default: objectdefault.StaticValue(basetypes.NewObjectValueMust(map[string]attr.Type{
+					"create": timetypes.DurationType{},
+					"delete": timetypes.DurationType{},
+					"update": timetypes.DurationType{},
+					"read":   timetypes.DurationType{},
+					"kill":   timetypes.DurationType{},
+				},
+					map[string]attr.Value{
+						"read":   timetypes.NewDurationValueFromStringMust("5m"),
+						"create": timetypes.NewDurationValueFromStringMust("5m"),
+						"update": timetypes.NewDurationValueFromStringMust("5m"),
+						"delete": timetypes.NewDurationValueFromStringMust("5m"),
+						"kill":   timetypes.NewDurationValueFromStringMust("30s"),
+					},
+				)),
+				Attributes: map[string]schema.Attribute{
+					"create": schema.StringAttribute{
+						Optional:   true,
+						Computed:   true,
+						CustomType: timetypes.DurationType{},
+						Default:    stringdefault.StaticString("5m"),
+						Validators: []validator.String{
+							stringvalidator.Duration(),
+						},
+						MarkdownDescription: "Timeout for resource creation [default: 5m]",
+					},
+					"update": schema.StringAttribute{
+						Optional:   true,
+						Computed:   true,
+						CustomType: timetypes.DurationType{},
+						Default:    stringdefault.StaticString("5m"),
+						Validators: []validator.String{
+							stringvalidator.Duration(),
+						},
+						MarkdownDescription: "Timeout for resource updating [default: 5m]",
+					},
+					"read": schema.StringAttribute{
+						Optional:   true,
+						Computed:   true,
+						CustomType: timetypes.DurationType{},
+						Default:    stringdefault.StaticString("5m"),
+						Validators: []validator.String{
+							stringvalidator.Duration(),
+						},
+						MarkdownDescription: "Timeout for resource refreshing [default: 5m]",
+					},
+					"delete": schema.StringAttribute{
+						Optional:   true,
+						Computed:   true,
+						CustomType: timetypes.DurationType{},
+						Default:    stringdefault.StaticString("5m"),
+						Validators: []validator.String{
+							stringvalidator.Duration(),
+						},
+						MarkdownDescription: "Timeout for resource deletion [default: 5m]",
+					},
+					"kill": schema.StringAttribute{
+						Optional:   true,
+						Computed:   true,
+						CustomType: timetypes.DurationType{},
+						Default:    stringdefault.StaticString("30s"),
+						Validators: []validator.String{
+							stringvalidator.Duration(),
+						},
+						MarkdownDescription: "Duration to wait for a graceful shutdown before force killing the virtual machine [default: 30s]",
+					},
 				},
 			},
 		},
@@ -269,8 +329,12 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 			resp.Diagnostics.Append(d...)
 		}
 	}()
-
-	createTimeout, diag := model.Timeouts.Create(ctx, defaultCreateTimeout)
+	var timeouts timeoutsModel
+	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	createTimeout, diag := timeouts.Create.ValueDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
@@ -419,8 +483,12 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 	if resp.Diagnostics.HasError() {
 		return
 	}
-
-	deleteTimeout, diag := model.Timeouts.Delete(ctx, defaultDeleteTimeout)
+	var timeouts timeoutsModel
+	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	deleteTimeout, diag := timeouts.Delete.ValueDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
@@ -441,12 +509,9 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 			return
 		}
 
-		killTimeout, err := time.ParseDuration(model.KillTimeout.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed parse kill timeout",
-				err.Error(),
-			)
+		killTimeout, diag := timeouts.Kill.ValueDuration()
+		if diag.HasError() {
+			resp.Diagnostics.Append(diag...)
 			return
 		}
 		timeToKill := time.After(killTimeout)

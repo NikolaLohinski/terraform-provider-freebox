@@ -6,12 +6,12 @@ Manages a virtual machine instance within a Freebox box. See the [Freebox blog](
 
 ```terraform
 resource "freebox_virtual_machine" "example" {
-  name      = "vm"
-  vcpus     = 1
-  memory    = 300
-  disk_path = "Freebox/VMs/debian.qcow2"
-  disk_type = "qcow2"
-  os        = "debian"
+  name       = "vm"
+  vcpus      = 1
+  memory     = 300
+  disk_path  = "Freebox/VMs/debian.qcow2"
+  disk_type  = "qcow2"
+  os         = "debian"
 }
 ```
 
@@ -34,9 +34,8 @@ resource "freebox_virtual_machine" "example" {
 - `cloudinit_userdata` (String) When cloudinit is enabled, raw YAML to be passed in the user-data file. Maximum 32767 characters
 - `enable_cloudinit` (Boolean) Whether or not to enable passing data through `cloudinit`. This uses the NoCloud iso image method; it will add a virtual CDROM drive (distinct from the one passed by `cd_path`) with the data in `cloudinit_userdata` and `cloudinit_hostname` when enabled
 - `enable_screen` (Boolean) Whether or not this VM should have a virtual screen, to use with the VNC websocket protocol
-- `kill_timeout` (String)
 - `os` (String) Type of OS used for this VM. Only used to set an icon for now
-- `timeouts` (Attributes) (see [below for nested schema](#nestedatt--timeouts))
+- `timeouts` (Attributes) Timeouts for various operations expressed as strings such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
 
@@ -49,6 +48,8 @@ resource "freebox_virtual_machine" "example" {
 
 Optional:
 
-- `create` (String) A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `5m0s`]
-- `delete` (String) A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `5m0s`]
-- `update` (String) A duration string such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) [default: `5m0s`]
+- `create` (String) Timeout for resource creation [default: 5m]
+- `delete` (String) Timeout for resource deletion [default: 5m]
+- `kill` (String) Duration to wait for a graceful shutdown before force killing the virtual machine [default: 30s]
+- `read` (String) Timeout for resource refreshing [default: 5m]
+- `update` (String) Timeout for resource updating [default: 5m]
