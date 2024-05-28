@@ -46,3 +46,6 @@ terraform-provider-*
 .version
 .published
 public/
+
+# Editor
+.vscode

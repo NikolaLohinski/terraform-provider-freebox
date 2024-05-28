@@ -361,22 +361,50 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	var timeouts timeoutsModel
+	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	readTimeout, diag := timeouts.Read.ValueDuration()
+	if diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, readTimeout)
+	defer cancel()
 
-	virtualMachine, err := v.client.GetVirtualMachine(ctx, model.ID.ValueInt64())
-	if err != nil {
+	resultChannel := make(chan freeboxTypes.VirtualMachine)
+	errChannel := make(chan error)
+	go func() {
+		virtualMachine, err := v.client.GetVirtualMachine(ctx, model.ID.ValueInt64())
+		if err != nil {
+			errChannel <- err
+			return
+		}
+		resultChannel <- virtualMachine
+	}()
+
+	select {
+	case <-ctx.Done():
+		resp.Diagnostics.AddError(
+			"Context cancelled",
+			fmt.Sprintf("reading virtual machine `%d` was cancelled or reached timeout", model.ID.ValueInt64()),
+		)
+		return
+	case vm := <-resultChannel:
+		if d := model.fromClientType(vm); d.HasError() {
+			resp.Diagnostics.Append(d...)
+			return
+		}
+		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+	case err := <-errChannel:
 		resp.Diagnostics.AddError(
 			"Failed to get virtual machine",
 			err.Error(),
 		)
 		return
 	}
-
-	if d := model.fromClientType(virtualMachine); d.HasError() {
-		resp.Diagnostics.Append(d...)
-		return
-	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (v *virtualMachineResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -393,8 +421,40 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.Append(diagnostics...)
 		return
 	}
+	defer func() {
+		if d := resp.State.Set(ctx, &model); d.HasError() {
+			resp.Diagnostics.Append(d...)
+		}
+	}()
+	var timeouts timeoutsModel
+	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+	updateTimeout, diag := timeouts.Update.ValueDuration()
+	if diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
+	defer cancel()
 
-	// TODO: stop the VM and monitor its status or just restart it if only the status is different
+	if model.Status.ValueString() != freeboxTypes.StoppedStatus {
+		killTimeout, diag := timeouts.Kill.ValueDuration()
+		if diag.HasError() {
+			resp.Diagnostics.Append(diag...)
+			return
+		}
+		status, err := v.stop(ctx, model.ID.ValueInt64(), killTimeout)
+		model.Status = basetypes.NewStringValue(status)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to stop virtual machine",
+				err.Error(),
+			)
+			return
+		}
+	}
 
 	virtualMachine, err := v.client.UpdateVirtualMachine(ctx, model.ID.ValueInt64(), payload)
 	if err != nil {
@@ -415,9 +475,15 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	// TODO: start the VM and monitor its status
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+	status, err := v.start(ctx, virtualMachine.ID)
+	model.Status = basetypes.NewStringValue(status)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to start virtual machine",
+			err.Error(),
+		)
+		return
+	}
 }
 
 func (v *virtualMachineResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
