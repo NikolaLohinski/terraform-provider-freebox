@@ -51,21 +51,21 @@ func (p *freeboxProvider) Schema(ctx context.Context, req provider.SchemaRequest
 		Attributes: map[string]schema.Attribute{
 			"endpoint": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The address of the Freebox [env: `" + environmentVariableEndpoint + "`] [default: `" + defaultEndpoint + "`]",
+				MarkdownDescription: "The address of the Freebox (env: `" + environmentVariableEndpoint + "`) (default: `\"" + defaultEndpoint + "\"`)",
 			},
 			"api_version": schema.StringAttribute{
 				Optional:            true,
-				MarkdownDescription: "The version of the API to use [env: `" + environmentVariableVersion + "`] [default: `" + defaultVersion + "`]",
+				MarkdownDescription: "The version of the API to use (env: `" + environmentVariableVersion + "`) (default: `\"" + defaultVersion + "\"`)",
 			},
 			"app_id": schema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
-				MarkdownDescription: "The ID of the application you created to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `" + environmentVariableAppID + "`]",
+				MarkdownDescription: "The ID of the application you created to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) (env: `" + environmentVariableAppID + "`)",
 			},
 			"token": schema.StringAttribute{
 				Optional:            true,
 				Sensitive:           true,
-				MarkdownDescription: "The private token to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `" + environmentVariableToken + "`]",
+				MarkdownDescription: "The private token to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) (env: `" + environmentVariableToken + "`)",
 			},
 		},
 	}

@@ -231,7 +231,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 						Validators: []validator.String{
 							stringvalidator.Duration(),
 						},
-						MarkdownDescription: "Timeout for resource creation [default: 5m]",
+						MarkdownDescription: "Timeout for resource creation (default: `\"5m\"`)",
 					},
 					"update": schema.StringAttribute{
 						Optional:   true,
@@ -241,7 +241,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 						Validators: []validator.String{
 							stringvalidator.Duration(),
 						},
-						MarkdownDescription: "Timeout for resource updating [default: 5m]",
+						MarkdownDescription: "Timeout for resource updating (default: `\"5m\"`)",
 					},
 					"read": schema.StringAttribute{
 						Optional:   true,
@@ -251,7 +251,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 						Validators: []validator.String{
 							stringvalidator.Duration(),
 						},
-						MarkdownDescription: "Timeout for resource refreshing [default: 5m]",
+						MarkdownDescription: "Timeout for resource refreshing (default: `\"5m\"`)",
 					},
 					"delete": schema.StringAttribute{
 						Optional:   true,
@@ -261,7 +261,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 						Validators: []validator.String{
 							stringvalidator.Duration(),
 						},
-						MarkdownDescription: "Timeout for resource deletion [default: 5m]",
+						MarkdownDescription: "Timeout for resource deletion (default: `\"5m\"`)",
 					},
 					"kill": schema.StringAttribute{
 						Optional:   true,
@@ -271,7 +271,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 						Validators: []validator.String{
 							stringvalidator.Duration(),
 						},
-						MarkdownDescription: "Duration to wait for a graceful shutdown before force killing the virtual machine [default: 30s]",
+						MarkdownDescription: "Duration to wait for a graceful shutdown before force killing the virtual machine (default: `\"30s\"`)",
 					},
 				},
 			},

@@ -23,7 +23,7 @@ provider "freebox" {
 
 ### Optional
 
-- `api_version` (String) The version of the API to use [env: `FREEBOX_VERSION`] [default: `latest`]
-- `app_id` (String, Sensitive) The ID of the application you created to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `FREEBOX_APP_ID`]
-- `endpoint` (String) The address of the Freebox [env: `FREEBOX_ENDPOINT`] [default: `http://mafreebox.freebox.fr`]
-- `token` (String, Sensitive) The private token to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) [env: `FREEBOX_TOKEN`]
+- `api_version` (String) The version of the API to use (env: `FREEBOX_VERSION`) (default: `"latest"`)
+- `app_id` (String, Sensitive) The ID of the application you created to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) (env: `FREEBOX_APP_ID`)
+- `endpoint` (String) The address of the Freebox (env: `FREEBOX_ENDPOINT`) (default: `"http://mafreebox.freebox.fr"`)
+- `token` (String, Sensitive) The private token to authenticate to the Freebox (see [the login documentation](https://dev.freebox.fr/sdk/os/login/)) (env: `FREEBOX_TOKEN`)

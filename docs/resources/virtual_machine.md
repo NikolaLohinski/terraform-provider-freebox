@@ -48,8 +48,8 @@ resource "freebox_virtual_machine" "example" {
 
 Optional:
 
-- `create` (String) Timeout for resource creation [default: 5m]
-- `delete` (String) Timeout for resource deletion [default: 5m]
-- `kill` (String) Duration to wait for a graceful shutdown before force killing the virtual machine [default: 30s]
-- `read` (String) Timeout for resource refreshing [default: 5m]
-- `update` (String) Timeout for resource updating [default: 5m]
+- `create` (String) Timeout for resource creation (default: `"5m"`)
+- `delete` (String) Timeout for resource deletion (default: `"5m"`)
+- `kill` (String) Duration to wait for a graceful shutdown before force killing the virtual machine (default: `"30s"`)
+- `read` (String) Timeout for resource refreshing (default: `"5m"`)
+- `update` (String) Timeout for resource updating (default: `"5m"`)
