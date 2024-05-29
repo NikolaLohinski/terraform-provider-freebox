@@ -1,8 +1,8 @@
 <div align="center">
 <p>
 
-[![build](https://github.com/NikolaLohinski/terraform-provider-freebox/actions/workflows/build.yml/badge.svg)](https://github.com/NikolaLohinski/terraform-provider-freebox/actions/workflows/build.yml)
-[![release](https://img.shields.io/github/v/release/nikolalohinski/terraform-provider-freebox.svg)](https://github.com/NikolaLohinski/terraform-provider-freebox/releases)
+[![build](https://img.shields.io/github/actions/workflow/status/nikolalohinski/terraform-provider-freebox/build.yml?logo=githubactions&style=for-the-badge)](https://github.com/NikolaLohinski/terraform-provider-freebox/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/nikolalohinski/terraform-provider-freebox.svg?logo=semanticrelease&style=for-the-badge)](https://github.com/NikolaLohinski/terraform-provider-freebox/releases)
 
 </p>
 <img src="./book/theme/favicon.svg" width="250"/>
