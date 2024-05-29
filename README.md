@@ -26,19 +26,29 @@
 
 ## Documentation
 
+### Terraform registry
+
+Please visit https://registry.terraform.io/providers/NikolaLohinski/freebox/latest
+
+### This project's GitHub page
+
+Please visit https://nikolalohinski.github.io/terraform-provider-freebox
+
+### Development
+
 Run the following to generate the registry documentation in the `docs/` folder:
 
 ```shell
 mage docs:build
 ```
 
-Serve the book using:
+And serve the book using:
 
 ```shell
 mage book:serve
 ```
 
-And visit http://127.0.0.1:3000 in your favorite browser.
+Then please visit http://127.0.0.1:3000 with your favorite browser.
 
 ## Tests
 
