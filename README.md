@@ -1,4 +1,10 @@
 <div align="center">
+<p>
+
+[![build](https://github.com/NikolaLohinski/terraform-provider-freebox/actions/workflows/build.yml/badge.svg)](https://github.com/NikolaLohinski/terraform-provider-freebox/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/nikolalohinski/terraform-provider-freebox.svg)](https://github.com/NikolaLohinski/terraform-provider-freebox/releases)
+
+</p>
 <img src="./book/theme/favicon.svg" width="250"/>
 <h1><code>terraform-provider-freebox</code></h1>
 </div>
