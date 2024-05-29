@@ -106,6 +106,8 @@ func (v *virtualMachineModel) toClientPayload(ctx context.Context) (payload free
 	}
 	payload.CloudInitUserData = v.CloudInitUserData.ValueString()
 	payload.CloudHostName = v.CloudHostName.ValueString()
+	payload.EnableCloudInit = v.EnableCloudInit.ValueBool()
+	payload.EnableScreen = v.EnableScreen.ValueBool()
 	if !v.BindUSBPorts.IsNull() && !v.BindUSBPorts.IsUnknown() {
 		return payload, v.BindUSBPorts.ElementsAs(ctx, &payload.BindUSBPorts, false)
 	}
@@ -411,7 +413,6 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 	var model virtualMachineModel
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &model)...)
-
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -421,16 +422,13 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.Append(diagnostics...)
 		return
 	}
-	defer func() {
-		if d := resp.State.Set(ctx, &model); d.HasError() {
-			resp.Diagnostics.Append(d...)
-		}
-	}()
+
 	var timeouts timeoutsModel
 	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
+
 	updateTimeout, diag := timeouts.Update.ValueDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
@@ -439,7 +437,13 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 	ctx, cancel := context.WithTimeout(ctx, updateTimeout)
 	defer cancel()
 
-	if model.Status.ValueString() != freeboxTypes.StoppedStatus {
+	var state virtualMachineModel
+	resp.Diagnostics.Append(req.State.Get(ctx, &state)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	if state.Status.ValueString() != freeboxTypes.StoppedStatus {
 		killTimeout, diag := timeouts.Kill.ValueDuration()
 		if diag.HasError() {
 			resp.Diagnostics.Append(diag...)
@@ -470,10 +474,11 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	if d := resp.State.Set(ctx, &model); d.HasError() {
-		resp.Diagnostics.Append(d...)
-		return
-	}
+	defer func() {
+		if d := resp.State.Set(ctx, &model); d.HasError() {
+			resp.Diagnostics.Append(d...)
+		}
+	}()
 
 	status, err := v.start(ctx, virtualMachine.ID)
 	model.Status = basetypes.NewStringValue(status)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/nikolalohinski/free-go/client"
@@ -18,7 +19,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 )
 
-var _ = Context("resource freebox_virtual_machine", Ordered, func() {
+var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() {
 	const (
 		rootDirectory = "Freebox"
 		diskFolder    = "terraform-provider-freebox"
@@ -68,9 +69,9 @@ var _ = Context("resource freebox_virtual_machine", Ordered, func() {
 			Expect(err).To(BeNil())
 		}
 	})
-	Context("simplest create and delete", func() {
+	Context("create and delete (CD)", func() {
 		It("should create, start, stop and delete a virtual machine", func() {
-			splitName := strings.Split(("test-" + uuid.New().String())[:30], "-")
+			splitName := strings.Split(("test-CD-" + uuid.New().String())[:30], "-")
 			name := strings.Join(splitName[:len(splitName)-1], "-")
 			resource.UnitTest(GinkgoT(), resource.TestCase{
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -83,6 +84,9 @@ var _ = Context("resource freebox_virtual_machine", Ordered, func() {
 								name      = "` + name + `"
 								disk_type = "qcow2"
 								disk_path = "` + diskImagePath + `"
+								timeouts = {
+									kill = "5s" // Alpine image used hangs on SIGTERM and needs a SIGKILL to terminate
+								}
 							}
 						`,
 						Check: resource.ComposeAggregateTestCheckFunc(
@@ -90,7 +94,93 @@ var _ = Context("resource freebox_virtual_machine", Ordered, func() {
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "vcpus", "1"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "memory", "300"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_type", freeboxTypes.QCow2Disk),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_path", diskImagePath),
 							func(s *terraform.State) error {
+								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
+								Expect(err).To(BeNil())
+								vm, err := freeboxClient.GetVirtualMachine(ctx, int64(identifier))
+								Expect(err).To(BeNil())
+								Expect(vm.VCPUs).To(Equal(int64(1)))
+								Expect(vm.Memory).To(Equal(int64(300)))
+								Expect(vm.Name).To(Equal(name))
+								Expect(vm.DiskType).To(Equal(freeboxTypes.QCow2Disk))
+								Expect(vm.DiskPath).To(Equal(types.Base64Path(diskImagePath)))
+								return nil
+							},
+						),
+					},
+				},
+			})
+		})
+	})
+	Context("create, update and delete (CUD)", func() {
+		var cloudInitConfig = strings.ReplaceAll(`{
+			"system_info": {
+				"default_user": {
+					"name":"freebox"
+				}
+			},
+			"password": "freebox",
+			"chpasswd": {
+				"expire": false
+			},
+			"ssh_pwauth":true
+		}`, "\n", "")
+		It("should create, start, stop, update, start again, stop again and finally delete a virtual machine", func() {
+			splitName := strings.Split(("test-CUD-" + uuid.New().String())[:30], "-")
+			name := strings.Join(splitName[:len(splitName)-1], "-")
+			resource.UnitTest(GinkgoT(), resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: providerBlock + `
+							resource "freebox_virtual_machine" "` + name + `" {
+								vcpus     = 1
+								memory    = 300
+								name      = "` + name + `"
+								disk_type = "qcow2"
+								disk_path = "` + diskImagePath + `"
+								timeouts = {
+									kill = "5s" // Alpine image used hangs on SIGTERM and needs a SIGKILL to terminate
+								}
+							}
+						`,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "name", name),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "enable_cloudinit", "false"),
+						),
+					},
+					{
+						Config: providerBlock + `
+							resource "freebox_virtual_machine" "` + name + `" {
+								vcpus     = 1
+								memory    = 300
+								name      = "` + name + `"
+								disk_type = "qcow2"
+								disk_path = "` + diskImagePath + `"
+								timeouts = {
+									kill = "5s" // Alpine image used hangs on SIGTERM and needs a SIGKILL to terminate
+								}
+								enable_cloudinit   = true
+								cloudinit_hostname = "` + name + `"
+								cloudinit_userdata = yamlencode(jsondecode(<<EOF
+								` + cloudInitConfig + `
+								EOF
+								))
+							}
+						`,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "name", name),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "enable_cloudinit", "true"),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "cloudinit_hostname", name),
+							func(s *terraform.State) error {
+								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
+								Expect(err).To(BeNil())
+								vm, err := freeboxClient.GetVirtualMachine(ctx, int64(identifier))
+								Expect(err).To(BeNil())
+								Expect(vm.EnableCloudInit).To(BeTrue())
+								Expect(vm.CloudHostName).To(Equal(name))
+								Expect(vm.CloudInitUserData).To(MatchYAML(cloudInitConfig))
 								return nil
 							},
 						),

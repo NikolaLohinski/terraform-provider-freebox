@@ -48,6 +48,6 @@ func Verify() {
 		spellbook.Docs.Build,
 		spellbook.Book.Build,
 		spellbook.Go.Tidy,
-		spellbook.Go.Test,
+		spellbook.Go.Cover,
 	)
 }
