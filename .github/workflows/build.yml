@@ -30,6 +30,8 @@ jobs:
   test:
     runs-on: ubuntu-latest
     name: Run tests with mage
+    concurrency:
+      group: freebox
     steps:
       - name: Checkout
         uses: actions/checkout@v4
