@@ -44,6 +44,11 @@ jobs:
       - name: Install tooling
         run: mage install
       - name: Run tests
+        run: echo $FREEBOX_VERSION && echo $FREEBOX_APP_ID
+        env:
+          FREEBOX_VERSION: ${{ secrets.FREEBOX_VERSION }}
+          FREEBOX_APP_ID: ${{ secrets.FREEBOX_APP_ID }}
+      - name: Run tests
         run: mage go:test
         env:
           FREEBOX_ENDPOINT: ${{ secrets.FREEBOX_ENDPOINT }}
