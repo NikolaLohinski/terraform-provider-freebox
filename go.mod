@@ -79,6 +79,6 @@ require (
 )
 
 replace (
-	github.com/hashicorp/terraform-plugin-framework-timetypes => github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240525202635-39e5aeaf674c
+	github.com/hashicorp/terraform-plugin-framework-timetypes => github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240603192245-70655cc3fdd3
 	github.com/hashicorp/terraform-plugin-framework-validators => github.com/nikolalohinski/terraform-plugin-framework-validators v0.0.0-20240515091749-eba7a63f76c6
 )

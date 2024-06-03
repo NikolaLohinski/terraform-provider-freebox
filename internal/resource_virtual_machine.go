@@ -60,11 +60,11 @@ type virtualMachineModel struct {
 }
 
 type timeoutsModel struct {
-	Create timetypes.Duration `tfsdk:"create"`
-	Update timetypes.Duration `tfsdk:"update"`
-	Read   timetypes.Duration `tfsdk:"read"`
-	Delete timetypes.Duration `tfsdk:"delete"`
-	Kill   timetypes.Duration `tfsdk:"kill"`
+	Create timetypes.GoDuration `tfsdk:"create"`
+	Update timetypes.GoDuration `tfsdk:"update"`
+	Read   timetypes.GoDuration `tfsdk:"read"`
+	Delete timetypes.GoDuration `tfsdk:"delete"`
+	Kill   timetypes.GoDuration `tfsdk:"kill"`
 }
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
@@ -210,25 +210,25 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				Computed:            true,
 				MarkdownDescription: "Timeouts for various operations expressed as strings such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours)",
 				Default: objectdefault.StaticValue(basetypes.NewObjectValueMust(map[string]attr.Type{
-					"create": timetypes.DurationType{},
-					"delete": timetypes.DurationType{},
-					"update": timetypes.DurationType{},
-					"read":   timetypes.DurationType{},
-					"kill":   timetypes.DurationType{},
+					"create": timetypes.GoDurationType{},
+					"delete": timetypes.GoDurationType{},
+					"update": timetypes.GoDurationType{},
+					"read":   timetypes.GoDurationType{},
+					"kill":   timetypes.GoDurationType{},
 				},
 					map[string]attr.Value{
-						"read":   timetypes.NewDurationValueFromStringMust("5m"),
-						"create": timetypes.NewDurationValueFromStringMust("5m"),
-						"update": timetypes.NewDurationValueFromStringMust("5m"),
-						"delete": timetypes.NewDurationValueFromStringMust("5m"),
-						"kill":   timetypes.NewDurationValueFromStringMust("30s"),
+						"read":   timetypes.NewGoDurationValueFromStringMust("5m"),
+						"create": timetypes.NewGoDurationValueFromStringMust("5m"),
+						"update": timetypes.NewGoDurationValueFromStringMust("5m"),
+						"delete": timetypes.NewGoDurationValueFromStringMust("5m"),
+						"kill":   timetypes.NewGoDurationValueFromStringMust("30s"),
 					},
 				)),
 				Attributes: map[string]schema.Attribute{
 					"create": schema.StringAttribute{
 						Optional:   true,
 						Computed:   true,
-						CustomType: timetypes.DurationType{},
+						CustomType: timetypes.GoDurationType{},
 						Default:    stringdefault.StaticString("5m"),
 						Validators: []validator.String{
 							stringvalidator.Duration(),
@@ -238,7 +238,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 					"update": schema.StringAttribute{
 						Optional:   true,
 						Computed:   true,
-						CustomType: timetypes.DurationType{},
+						CustomType: timetypes.GoDurationType{},
 						Default:    stringdefault.StaticString("5m"),
 						Validators: []validator.String{
 							stringvalidator.Duration(),
@@ -248,7 +248,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 					"read": schema.StringAttribute{
 						Optional:   true,
 						Computed:   true,
-						CustomType: timetypes.DurationType{},
+						CustomType: timetypes.GoDurationType{},
 						Default:    stringdefault.StaticString("5m"),
 						Validators: []validator.String{
 							stringvalidator.Duration(),
@@ -258,7 +258,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 					"delete": schema.StringAttribute{
 						Optional:   true,
 						Computed:   true,
-						CustomType: timetypes.DurationType{},
+						CustomType: timetypes.GoDurationType{},
 						Default:    stringdefault.StaticString("5m"),
 						Validators: []validator.String{
 							stringvalidator.Duration(),
@@ -268,7 +268,7 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 					"kill": schema.StringAttribute{
 						Optional:   true,
 						Computed:   true,
-						CustomType: timetypes.DurationType{},
+						CustomType: timetypes.GoDurationType{},
 						Default:    stringdefault.StaticString("30s"),
 						Validators: []validator.String{
 							stringvalidator.Duration(),
@@ -336,7 +336,7 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	createTimeout, diag := timeouts.Create.ValueDuration()
+	createTimeout, diag := timeouts.Create.ValueGoDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
@@ -368,7 +368,7 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	readTimeout, diag := timeouts.Read.ValueDuration()
+	readTimeout, diag := timeouts.Read.ValueGoDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
@@ -429,7 +429,7 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	updateTimeout, diag := timeouts.Update.ValueDuration()
+	updateTimeout, diag := timeouts.Update.ValueGoDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
@@ -444,7 +444,7 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 	}
 
 	if state.Status.ValueString() != freeboxTypes.StoppedStatus {
-		killTimeout, diag := timeouts.Kill.ValueDuration()
+		killTimeout, diag := timeouts.Kill.ValueGoDuration()
 		if diag.HasError() {
 			resp.Diagnostics.Append(diag...)
 			return
@@ -504,7 +504,7 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	deleteTimeout, diag := timeouts.Delete.ValueDuration()
+	deleteTimeout, diag := timeouts.Delete.ValueGoDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
@@ -513,7 +513,7 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 	defer cancel()
 
 	if model.Status.ValueString() != freeboxTypes.StoppedStatus {
-		killTimeout, diag := timeouts.Kill.ValueDuration()
+		killTimeout, diag := timeouts.Kill.ValueGoDuration()
 		if diag.HasError() {
 			resp.Diagnostics.Append(diag...)
 			return

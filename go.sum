@@ -137,8 +137,8 @@ github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zx
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
 github.com/nikolalohinski/free-go v1.0.0 h1:cQwv44Fu+XNnzsj0mVYibhIVTpssdSzLfp7fY4zs4es=
 github.com/nikolalohinski/free-go v1.0.0/go.mod h1:x2DPbV3mIkUapqREN97kAsqQP+4QZSLNbnuxOqMJUBs=
-github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240525202635-39e5aeaf674c h1:Gf8ve4T98UaAnmhde786iQVBtvqIEa0ZYU/Czy6qvw4=
-github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240525202635-39e5aeaf674c/go.mod h1:mGuieb3bqKFYwEYB4lCMt302Z3siyv4PFYk/41wAUps=
+github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240603192245-70655cc3fdd3 h1:Wv5VhQJLqLzKw7tMHzqtXQBeB6uDoKDhcEZ9p0vkIjs=
+github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240603192245-70655cc3fdd3/go.mod h1:mGuieb3bqKFYwEYB4lCMt302Z3siyv4PFYk/41wAUps=
 github.com/nikolalohinski/terraform-plugin-framework-validators v0.0.0-20240515091749-eba7a63f76c6 h1:ka0UOLTwG86gIEK9U7PEjC1esTZ7G+PgPx9jCeDEGDI=
 github.com/nikolalohinski/terraform-plugin-framework-validators v0.0.0-20240515091749-eba7a63f76c6/go.mod h1:Ypqf8SVSPAc5c455t2uJdivPCKGmNIa8OSViKz92PgE=
 github.com/oklog/run v1.1.0 h1:GEenZ1cK0+q0+wsJew9qUg/DyD8k3JzYsZAi5gYi2mA=
