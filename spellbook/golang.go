@@ -12,7 +12,7 @@ type Go mg.Namespace
 
 // Runs ginkgo for unit tests
 func (Go) Test(ctx context.Context) error {
-	return sh.Run("ginkgo", "run", "./...")
+	return sh.Run("ginkgo", "run", "-p", "./...")
 }
 
 // Cleans dependencies and imports
