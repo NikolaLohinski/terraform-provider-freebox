@@ -10,7 +10,7 @@ require (
 require (
 	github.com/MakeNowJust/heredoc v1.0.0
 	github.com/google/uuid v1.6.0
-	github.com/hashicorp/terraform-plugin-framework-timetypes v0.0.0-00010101000000-000000000000
+	github.com/hashicorp/terraform-plugin-framework-timetypes v0.4.0
 	github.com/hashicorp/terraform-plugin-framework-validators v0.12.0
 	github.com/hashicorp/terraform-plugin-testing v1.7.0
 	github.com/magefile/mage v1.15.0
@@ -76,9 +76,4 @@ require (
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.34.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-)
-
-replace (
-	github.com/hashicorp/terraform-plugin-framework-timetypes => github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240603192245-70655cc3fdd3
-	github.com/hashicorp/terraform-plugin-framework-validators => github.com/nikolalohinski/terraform-plugin-framework-validators v0.0.0-20240515091749-eba7a63f76c6
 )

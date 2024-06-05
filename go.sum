@@ -87,6 +87,10 @@ github.com/hashicorp/terraform-json v0.21.0 h1:9NQxbLNqPbEMze+S6+YluEdXgJmhQykRy
 github.com/hashicorp/terraform-json v0.21.0/go.mod h1:qdeBs11ovMzo5puhrRibdD6d2Dq6TyE/28JiU4tIQxk=
 github.com/hashicorp/terraform-plugin-framework v1.8.0 h1:P07qy8RKLcoBkCrY2RHJer5AEvJnDuXomBgou6fD8kI=
 github.com/hashicorp/terraform-plugin-framework v1.8.0/go.mod h1:/CpTukO88PcL/62noU7cuyaSJ4Rsim+A/pa+3rUVufY=
+github.com/hashicorp/terraform-plugin-framework-timetypes v0.4.0 h1:XLI93Oqw2/KTzYjgCXrUnm8LBkGAiHC/mDQg5g5Vob4=
+github.com/hashicorp/terraform-plugin-framework-timetypes v0.4.0/go.mod h1:mGuieb3bqKFYwEYB4lCMt302Z3siyv4PFYk/41wAUps=
+github.com/hashicorp/terraform-plugin-framework-validators v0.12.0 h1:HOjBuMbOEzl7snOdOoUfE2Jgeto6JOjLVQ39Ls2nksc=
+github.com/hashicorp/terraform-plugin-framework-validators v0.12.0/go.mod h1:jfHGE/gzjxYz6XoUwi/aYiiKrJDeutQNUtGQXkaHklg=
 github.com/hashicorp/terraform-plugin-go v0.23.0 h1:AALVuU1gD1kPb48aPQUjug9Ir/125t+AAurhqphJ2Co=
 github.com/hashicorp/terraform-plugin-go v0.23.0/go.mod h1:1E3Cr9h2vMlahWMbsSEcNrOCxovCZhOOIXjFHbjc/lQ=
 github.com/hashicorp/terraform-plugin-log v0.9.0 h1:i7hOA+vdAItN1/7UrfBqBwvYPQ9TFvymaRGZED3FCV0=
@@ -137,10 +141,6 @@ github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zx
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
 github.com/nikolalohinski/free-go v1.0.0 h1:cQwv44Fu+XNnzsj0mVYibhIVTpssdSzLfp7fY4zs4es=
 github.com/nikolalohinski/free-go v1.0.0/go.mod h1:x2DPbV3mIkUapqREN97kAsqQP+4QZSLNbnuxOqMJUBs=
-github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240603192245-70655cc3fdd3 h1:Wv5VhQJLqLzKw7tMHzqtXQBeB6uDoKDhcEZ9p0vkIjs=
-github.com/nikolalohinski/terraform-plugin-framework-timetypes v0.0.0-20240603192245-70655cc3fdd3/go.mod h1:mGuieb3bqKFYwEYB4lCMt302Z3siyv4PFYk/41wAUps=
-github.com/nikolalohinski/terraform-plugin-framework-validators v0.0.0-20240515091749-eba7a63f76c6 h1:ka0UOLTwG86gIEK9U7PEjC1esTZ7G+PgPx9jCeDEGDI=
-github.com/nikolalohinski/terraform-plugin-framework-validators v0.0.0-20240515091749-eba7a63f76c6/go.mod h1:Ypqf8SVSPAc5c455t2uJdivPCKGmNIa8OSViKz92PgE=
 github.com/oklog/run v1.1.0 h1:GEenZ1cK0+q0+wsJew9qUg/DyD8k3JzYsZAi5gYi2mA=
 github.com/oklog/run v1.1.0/go.mod h1:sVPdnTZT1zYwAJeCMu2Th4T21pA3FPOQRfWjQlk7DVU=
 github.com/onsi/ginkgo/v2 v2.18.0 h1:W9Y7IWXxPUpAit9ieMOLI7PJZGaW22DTKgiVAuhDTLc=
