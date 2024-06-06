@@ -3,11 +3,18 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/nikolalohinski/terraform-provider-freebox/internal"
+)
+
+const (
+	authorizePositionalArgument = "authorize"
 )
 
 var (
@@ -16,19 +23,23 @@ var (
 )
 
 func main() {
-	var debug bool
+	var (
+		debug bool
+		err   error
+	)
 
 	flag.BoolVar(&debug, "debug", false, "set to true to run the provider with support for debuggers like delve")
 	flag.Parse()
 
-	opts := providerserver.ServeOpts{
-		Address: "registry.terraform.io/nikolalohinski/freebox",
-		Debug:   debug,
+	if flag.Arg(0) == authorizePositionalArgument {
+		_, err = tea.NewProgram(internal.NewAuthorization(version)).Run()
+	} else {
+		err = providerserver.Serve(context.Background(), internal.NewProvider(version), providerserver.ServeOpts{
+			Address: "registry.terraform.io/nikolalohinski/freebox",
+			Debug:   debug,
+		})
 	}
-
-	err := providerserver.Serve(context.Background(), internal.NewProvider(version), opts)
-
 	if err != nil {
-		log.Fatal(err.Error())
+		log.Fatal(fmt.Errorf("an error occurred during the provider run: %s", err.Error()))
 	}
 }

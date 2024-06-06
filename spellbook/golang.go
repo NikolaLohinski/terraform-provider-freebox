@@ -20,6 +20,11 @@ func (Go) Tidy(ctx context.Context) error {
 	return sh.Run("go", "mod", "tidy", "-v")
 }
 
+// Compile the binary
+func (Go) Build(ctx context.Context) error {
+	return sh.Run("go", "build", ".")
+}
+
 // Builds and opens a coverage report
 func (Go) Cover(ctx context.Context) error {
 	if err := sh.Run("go", "test", "-v", "-coverprofile", "coverage.txt", "./..."); err != nil {
