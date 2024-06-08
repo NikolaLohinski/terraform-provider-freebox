@@ -228,7 +228,7 @@ func (m *model) View() (s string) {
 
 	if m.active == 4 {
 		view += "\n" + fmt.Sprintf(
-			"%s Please head to your Freebox Server and click on %s\n   %s Waiting for the request to be approved...",
+			"%s Please head to your Freebox Server and click on %s\n\n   %s Waiting for the request to be approved...",
 			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#00FFFF")).Render(">"),
 			lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("✔"),
 			m.spinner.View(),

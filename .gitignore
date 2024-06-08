@@ -49,3 +49,8 @@ public/
 
 # Editor
 .vscode
+
+# Terraform files
+.terraform.d
+.terraform
+.terraform.lock.hcl

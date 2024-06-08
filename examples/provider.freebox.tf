@@ -1,7 +1,7 @@
 terraform {
   required_providers {
     freebox = {
-      source = "terraform.registry.io/nikolalohinski/freebox"
+      source = "registry.terraform.io/nikolalohinski/freebox"
     }
   }
 }

@@ -1,6 +1,42 @@
 # Freebox Provider
 
-🔌 A `terraform` provider to interact with the [Freebox modem](https://en.wikipedia.org/wiki/Freebox) from the [French internet service provider Free](https://en.wikipedia.org/wiki/Free_(ISP))
+A `terraform` provider to interact with the [Freebox modem](https://en.wikipedia.org/wiki/Freebox) from the [French internet service provider Free](https://en.wikipedia.org/wiki/Free_(ISP)) and built on top of [`free-go`](https://github.com/NikolaLohinski/free-go).
+
+## Credentials
+
+### Generating credentials
+
+The provider binary is equipped with an addional flag that toggles a special behavior.
+After a series of prompts to build the request the application will contact your Freebox to configure credentials and log them in your terminal.
+
+First, head to the [release page](https://github.com/NikolaLohinski/terraform-provider-freebox/releases) and download the latest provider according to your platform.
+
+Then, decompress the archive and run the binary with the `authorize` argument, for example:
+
+```sh
+terraform-provider-freebox_v1.0.0 authorize
+```
+
+> ℹ️ You might need to make the binary executable depending on your OS.
+
+Then follow the prompts and you should get yourself a valid token to interact with your Freebox.
+
+### Configuring permissions
+
+At the time of this writing, the managment of permissions can not be done via the API. It must be done manually through the freebox OS web UI.
+
+If you need to change the default set of permissions, first head to [http://mafreebox.freebox.fr](http://mafreebox.freebox.fr) and log in.
+
+Then open the `Paramètres de la Freebox` menu, double click on `Gestion des accès` and switch to the `Applications` tab.
+
+You should see the application you just registered earlier ; click on the `Editer` icon `🖉`.
+
+Finally, pick the permissions your application requires. For a basic usage the following ones are good enough:
+
+- `Accès au gestionnaire de téléchargements`
+- `Accès aux fichiers de la Freebox`
+- `Modification des réglages de la Freebox`
+- `Contrôle de la VM`
 
 ## Example
 
@@ -8,7 +44,7 @@
 terraform {
   required_providers {
     freebox = {
-      source = "terraform.registry.io/nikolalohinski/freebox"
+      source = "registry.terraform.io/nikolalohinski/freebox"
     }
   }
 }
