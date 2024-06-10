@@ -109,6 +109,12 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 							},
 						),
 					},
+					// ImportState Testing
+					{
+						ResourceName: "freebox_virtual_machine." + name,
+						ImportState:  true,
+						ImportStateVerify: true,
+					},
 				},
 			})
 		})
