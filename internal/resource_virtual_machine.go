@@ -4,14 +4,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
@@ -22,7 +26,8 @@ import (
 )
 
 var (
-	_ resource.Resource = &virtualMachineResource{}
+	_ resource.Resource                = &virtualMachineResource{}
+	_ resource.ResourceWithImportState = &virtualMachineResource{}
 )
 
 type virtualMachineStateChangeEvent struct {
@@ -125,6 +130,9 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			"id": schema.Int64Attribute{
 				Computed:            true,
 				MarkdownDescription: "Unique identifier of the VM",
+				PlanModifiers: []planmodifier.Int64{
+					int64planmodifier.UseStateForUnknown(),
+				},
 			},
 			"mac": schema.StringAttribute{
 				Computed:            true,
@@ -521,6 +529,40 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 		)
 		return
 	}
+}
+
+func (v *virtualMachineResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// Convert ID to Int 
+	id, err := strconv.Atoi(req.ID)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"UnexpectedImportIdentifier",
+			fmt.Sprintf("Expected import identifier with format: ID. Got: %s", req.ID),
+		)
+	}
+
+	attrPath := path.Root("id")
+
+	if attrPath.Equal(path.Empty()) {
+		resp.Diagnostics.AddError(
+			"Resource Import Passthrough Missing Attribute Path",
+			"This is always an error in the provider. Please report the following to the provider developer:\n\n"+
+				"Resource ImportState method call to ImportStatePassthroughIntID path must be set to a valid attribute path that can accept a int value.",
+		)
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, attrPath, id)...)
+	// Initialize timeouts
+	timeouts := timeoutsModel{
+		Read:   timetypes.NewGoDurationValueFromStringMust("5m"),
+		Create: timetypes.NewGoDurationValueFromStringMust("5m"),
+		Update: timetypes.NewGoDurationValueFromStringMust("5m"),
+		Delete: timetypes.NewGoDurationValueFromStringMust("5m"),
+		Kill:   timetypes.NewGoDurationValueFromStringMust("30s"),
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timeouts"), &timeouts)...)
+
 }
 
 func (v *virtualMachineResource) start(ctx context.Context, identifier int64) (status string, err error) {
