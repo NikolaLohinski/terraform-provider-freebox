@@ -53,3 +53,10 @@ Optional:
 - `kill` (String) Duration to wait for a graceful shutdown before force killing the virtual machine (default: `"30s"`)
 - `read` (String) Timeout for resource refreshing (default: `"5m"`)
 - `update` (String) Timeout for resource updating (default: `"5m"`)
+
+## Import
+
+```sh
+# ------------------------------------------------ 👇 is the ID of the virtual machine
+terraform import "freebox_virtual_machine.example" 42
+```

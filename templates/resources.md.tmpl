@@ -7,3 +7,7 @@
 {{ printf "examples/resource.%s.tf" .Name | tffile }}
 
 {{ .SchemaMarkdown | trimspace }}
+
+## Import
+
+{{ printf "examples/import.%s.sh" .Name | codefile "sh" }}
