@@ -20,13 +20,11 @@ import (
 )
 
 var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() {
-	const (
-		rootDirectory = "Freebox"
-		diskFolder    = "terraform-provider-freebox"
-		diskImageName = "alpine-virt-3.20.0-aarch64.qcow2"
-		diskImagePath = rootDirectory + "/" + diskFolder + "/" + diskImageName
-	)
 	var (
+		diskFolder    = "Logiciels"
+		diskImageName = "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2"
+		diskImagePath = root + "/" + diskFolder + "/" + diskImageName
+
 		ctx           context.Context
 		freeboxClient client.Client
 	)
@@ -39,7 +37,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 		permissions := Must(freeboxClient.Login(ctx))
 		Expect(permissions.Settings).To(BeTrue(), fmt.Sprintf("the token for the '%s' app does not appear to have the permissions to modify freebox settings", os.Getenv("FREEBOX_APP_ID")))
 		// Create directory
-		_, err := freeboxClient.CreateDirectory(ctx, rootDirectory, diskFolder)
+		_, err := freeboxClient.CreateDirectory(ctx, root, diskFolder)
 		Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
 		// Check that the image exists and if so, do an early return
 		_, err = freeboxClient.GetFileInfo(ctx, diskImagePath)
@@ -53,7 +51,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 					"https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
 				},
 				Hash:              "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
-				DownloadDirectory: rootDirectory + "/" + diskFolder,
+				DownloadDirectory: root + "/" + diskFolder,
 				Filename:          diskImageName,
 			})
 			Expect(err).To(BeNil())
@@ -111,8 +109,8 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 					},
 					// ImportState Testing
 					{
-						ResourceName: "freebox_virtual_machine." + name,
-						ImportState:  true,
+						ResourceName:      "freebox_virtual_machine." + name,
+						ImportState:       true,
 						ImportStateVerify: true,
 					},
 				},
