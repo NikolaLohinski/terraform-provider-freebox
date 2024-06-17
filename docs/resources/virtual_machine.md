@@ -12,6 +12,9 @@ resource "freebox_virtual_machine" "example" {
   disk_path  = "Freebox/VMs/debian.qcow2"
   disk_type  = "qcow2"
   os         = "debian"
+  timeouts  = {
+    kill = "15s"
+  }
 }
 ```
 
@@ -41,6 +44,7 @@ resource "freebox_virtual_machine" "example" {
 
 - `id` (Number) Unique identifier of the VM
 - `mac` (String) VM ethernet interface MAC address
+- `networking` (Attributes) Networking information of the virtual machine (see [below for nested schema](#nestedatt--networking))
 - `status` (String) VM status
 
 <a id="nestedatt--timeouts"></a>
@@ -51,8 +55,19 @@ Optional:
 - `create` (String) Timeout for resource creation (default: `"5m"`)
 - `delete` (String) Timeout for resource deletion (default: `"5m"`)
 - `kill` (String) Duration to wait for a graceful shutdown before force killing the virtual machine (default: `"30s"`)
+- `networking` (String) Duration to wait for the virtual machine to appear on the network (default: `"3m"`)
 - `read` (String) Timeout for resource refreshing (default: `"5m"`)
 - `update` (String) Timeout for resource updating (default: `"5m"`)
+
+
+<a id="nestedatt--networking"></a>
+### Nested Schema for `networking`
+
+Read-Only:
+
+- `interface` (String) Network interface used by the virtual machine
+- `ipv4` (String) IPV4 address on the local network
+- `ipv6` (String) IPV6 address on the local network
 
 ## Import
 

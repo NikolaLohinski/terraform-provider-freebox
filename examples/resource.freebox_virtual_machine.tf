@@ -5,4 +5,7 @@ resource "freebox_virtual_machine" "example" {
   disk_path  = "Freebox/VMs/debian.qcow2"
   disk_type  = "qcow2"
   os         = "debian"
+  timeouts  = {
+    kill = "15s"
+  }
 }

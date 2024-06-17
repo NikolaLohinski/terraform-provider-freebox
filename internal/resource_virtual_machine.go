@@ -15,8 +15,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -28,11 +28,24 @@ import (
 var (
 	_ resource.Resource                = &virtualMachineResource{}
 	_ resource.ResourceWithImportState = &virtualMachineResource{}
+
+	defaultTimeoutRead       = "5m"
+	defaultTimeoutCreate     = "5m"
+	defaultTimeoutUpdate     = "5m"
+	defaultTimeoutDelete     = "5m"
+	defaultTimeoutKill       = "30s"
+	defaultTimeoutNetworking = "3m"
 )
 
 type virtualMachineStateChangeEvent struct {
 	ID     int64  `json:"id"`
 	Status string `json:"status"`
+}
+
+type virtualMachineNetworking struct {
+	Interface string
+	IPv6      string
+	IPv4      string
 }
 
 func NewVirtualMachineResource() resource.Resource {
@@ -62,14 +75,7 @@ type virtualMachineModel struct {
 	CloudInitUserData types.String `tfsdk:"cloudinit_userdata"`
 	CloudHostName     types.String `tfsdk:"cloudinit_hostname"`
 	Timeouts          types.Object `tfsdk:"timeouts"`
-}
-
-type timeoutsModel struct {
-	Create timetypes.GoDuration `tfsdk:"create"`
-	Update timetypes.GoDuration `tfsdk:"update"`
-	Read   timetypes.GoDuration `tfsdk:"read"`
-	Delete timetypes.GoDuration `tfsdk:"delete"`
-	Kill   timetypes.GoDuration `tfsdk:"kill"`
+	Networking        types.Object `tfsdk:"networking"`
 }
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
@@ -117,6 +123,45 @@ func (v *virtualMachineModel) toClientPayload(ctx context.Context) (payload free
 		return payload, v.BindUSBPorts.ElementsAs(ctx, &payload.BindUSBPorts, false)
 	}
 	return payload, nil
+}
+
+type timeoutsModel struct {
+	Create     timetypes.GoDuration `tfsdk:"create"`
+	Update     timetypes.GoDuration `tfsdk:"update"`
+	Read       timetypes.GoDuration `tfsdk:"read"`
+	Delete     timetypes.GoDuration `tfsdk:"delete"`
+	Kill       timetypes.GoDuration `tfsdk:"kill"`
+	Networking timetypes.GoDuration `tfsdk:"networking"`
+}
+
+type networkingModel struct {
+	Interface types.String `tfsdk:"interface"`
+	IPv4      types.String `tfsdk:"ipv6"`
+	IPv6      types.String `tfsdk:"ipv4"`
+}
+
+func (n *networkingModel) asObjectValue(ctx context.Context, networking virtualMachineNetworking) (basetypes.ObjectValue, diag.Diagnostics) {
+	if networking.IPv4 != "" {
+		n.IPv4 = basetypes.NewStringValue(networking.IPv4)
+	} else {
+		n.IPv4 = basetypes.NewStringNull()
+	}
+	if networking.IPv6 != "" {
+		n.IPv6 = basetypes.NewStringValue(networking.IPv6)
+	} else {
+		n.IPv6 = basetypes.NewStringNull()
+	}
+	if networking.Interface != "" {
+		n.Interface = basetypes.NewStringValue(networking.Interface)
+	} else {
+		n.Interface = basetypes.NewStringNull()
+	}
+
+	return basetypes.NewObjectValueFrom(ctx, map[string]attr.Type{
+		"ipv6":      basetypes.StringType{},
+		"ipv4":      basetypes.StringType{},
+		"interface": basetypes.StringType{},
+	}, n)
 }
 
 func (v *virtualMachineResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -214,59 +259,103 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				MarkdownDescription: "List of ports that should be bound to this VM. Only one VM can use USB at given time, whether is uses only one or all USB ports. The list of system USB ports is available in VmSystemInfo. For example: `usb-external-type-a`, `usb-external-type-c`",
 			},
 			"timeouts": schema.SingleNestedAttribute{
-				Optional:            true,
-				Computed:            true,
 				MarkdownDescription: "Timeouts for various operations expressed as strings such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours)",
-				Default: objectdefault.StaticValue(basetypes.NewObjectValueMust(map[string]attr.Type{
-					"create": timetypes.GoDurationType{},
-					"delete": timetypes.GoDurationType{},
-					"update": timetypes.GoDurationType{},
-					"read":   timetypes.GoDurationType{},
-					"kill":   timetypes.GoDurationType{},
-				},
-					map[string]attr.Value{
-						"read":   timetypes.NewGoDurationValueFromStringMust("5m"),
-						"create": timetypes.NewGoDurationValueFromStringMust("5m"),
-						"update": timetypes.NewGoDurationValueFromStringMust("5m"),
-						"delete": timetypes.NewGoDurationValueFromStringMust("5m"),
-						"kill":   timetypes.NewGoDurationValueFromStringMust("30s"),
-					},
-				)),
+				Computed:            true,
+				Optional:            true,
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"create":     timetypes.GoDurationType{},
+							"update":     timetypes.GoDurationType{},
+							"read":       timetypes.GoDurationType{},
+							"delete":     timetypes.GoDurationType{},
+							"kill":       timetypes.GoDurationType{},
+							"networking": timetypes.GoDurationType{},
+						},
+						map[string]attr.Value{
+							"create":     timetypes.NewGoDurationValueFromStringMust(defaultTimeoutCreate),
+							"update":     timetypes.NewGoDurationValueFromStringMust(defaultTimeoutUpdate),
+							"read":       timetypes.NewGoDurationValueFromStringMust(defaultTimeoutRead),
+							"delete":     timetypes.NewGoDurationValueFromStringMust(defaultTimeoutDelete),
+							"kill":       timetypes.NewGoDurationValueFromStringMust(defaultTimeoutKill),
+							"networking": timetypes.NewGoDurationValueFromStringMust(defaultTimeoutNetworking),
+						},
+					),
+				),
 				Attributes: map[string]schema.Attribute{
 					"create": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
 						CustomType:          timetypes.GoDurationType{},
-						Default:             stringdefault.StaticString("5m"),
-						MarkdownDescription: "Timeout for resource creation (default: `\"5m\"`)",
+						Default:             stringdefault.StaticString(defaultTimeoutCreate),
+						MarkdownDescription: "Timeout for resource creation (default: `\"" + defaultTimeoutCreate + "\"`)",
 					},
 					"update": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
 						CustomType:          timetypes.GoDurationType{},
-						Default:             stringdefault.StaticString("5m"),
-						MarkdownDescription: "Timeout for resource updating (default: `\"5m\"`)",
+						Default:             stringdefault.StaticString(defaultTimeoutUpdate),
+						MarkdownDescription: "Timeout for resource updating (default: `\"" + defaultTimeoutUpdate + "\"`)",
 					},
 					"read": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
 						CustomType:          timetypes.GoDurationType{},
-						Default:             stringdefault.StaticString("5m"),
-						MarkdownDescription: "Timeout for resource refreshing (default: `\"5m\"`)",
+						Default:             stringdefault.StaticString(defaultTimeoutRead),
+						MarkdownDescription: "Timeout for resource refreshing (default: `\"" + defaultTimeoutRead + "\"`)",
 					},
 					"delete": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
 						CustomType:          timetypes.GoDurationType{},
-						Default:             stringdefault.StaticString("5m"),
-						MarkdownDescription: "Timeout for resource deletion (default: `\"5m\"`)",
+						Default:             stringdefault.StaticString(defaultTimeoutDelete),
+						MarkdownDescription: "Timeout for resource deletion (default: `\"" + defaultTimeoutDelete + "\"`)",
 					},
 					"kill": schema.StringAttribute{
 						Optional:            true,
 						Computed:            true,
 						CustomType:          timetypes.GoDurationType{},
-						Default:             stringdefault.StaticString("30s"),
-						MarkdownDescription: "Duration to wait for a graceful shutdown before force killing the virtual machine (default: `\"30s\"`)",
+						Default:             stringdefault.StaticString(defaultTimeoutKill),
+						MarkdownDescription: "Duration to wait for a graceful shutdown before force killing the virtual machine (default: `\"" + defaultTimeoutKill + "\"`)",
+					},
+					"networking": schema.StringAttribute{
+						Optional:            true,
+						Computed:            true,
+						CustomType:          timetypes.GoDurationType{},
+						Default:             stringdefault.StaticString(defaultTimeoutNetworking),
+						MarkdownDescription: "Duration to wait for the virtual machine to appear on the network (default: `\"" + defaultTimeoutNetworking + "\"`)",
+					},
+				},
+			},
+			"networking": schema.SingleNestedAttribute{
+				Computed:            true,
+				MarkdownDescription: "Networking information of the virtual machine",
+				Default: objectdefault.StaticValue(
+					types.ObjectValueMust(
+						map[string]attr.Type{
+							"ipv6":      basetypes.StringType{},
+							"ipv4":      basetypes.StringType{},
+							"interface": basetypes.StringType{},
+						},
+						map[string]attr.Value{
+							"ipv4":      types.StringNull(),
+							"ipv6":      types.StringNull(),
+							"interface": types.StringNull(),
+						},
+					),
+				),
+				Attributes: map[string]schema.Attribute{
+					"ipv6": schema.StringAttribute{
+						Computed:            true,
+						MarkdownDescription: "IPV6 address on the local network",
+					},
+					"ipv4": schema.StringAttribute{
+						Computed:            true,
+						MarkdownDescription: "IPV4 address on the local network",
+					},
+					"interface": schema.StringAttribute{
+						Computed:            true,
+						MarkdownDescription: "Network interface used by the virtual machine",
 					},
 				},
 			},
@@ -319,19 +408,15 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.Append(d...)
 		return
 	}
-	defer func() {
-		if d := resp.State.Set(ctx, &model); d.HasError() {
-			resp.Diagnostics.Append(d...)
-		}
-	}()
+
 	var timeouts timeoutsModel
 	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
 	if resp.Diagnostics.HasError() {
 		return
 	}
-	createTimeout, diag := timeouts.Create.ValueGoDuration()
-	if diag.HasError() {
-		resp.Diagnostics.Append(diag...)
+	createTimeout, diags := timeouts.Create.ValueGoDuration()
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
@@ -346,6 +431,29 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 		)
 		return
 	}
+
+	networkingTimeout, diags := timeouts.Networking.ValueGoDuration()
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	networking, err := v.getNetworking(ctx, model.Name.ValueString(), networkingTimeout)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to determine networking information",
+			err.Error(),
+		)
+		return
+	}
+
+	networkingModelObject, diags := (&networkingModel{}).asObjectValue(ctx, networking)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	model.Networking = networkingModelObject
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -392,7 +500,6 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 			resp.Diagnostics.Append(d...)
 			return
 		}
-		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	case err := <-errChannel:
 		resp.Diagnostics.AddError(
 			"Failed to get virtual machine",
@@ -400,6 +507,28 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		)
 		return
 	}
+	networkingTimeout, diag := timeouts.Networking.ValueGoDuration()
+	if diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+	networking, err := v.getNetworking(ctx, model.Name.ValueString(), networkingTimeout)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to determine networking information",
+			err.Error(),
+		)
+		return
+	}
+
+	networkingModelObject, diags := (&networkingModel{}).asObjectValue(ctx, networking)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	model.Networking = networkingModelObject
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (v *virtualMachineResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -467,12 +596,6 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	defer func() {
-		if d := resp.State.Set(ctx, &model); d.HasError() {
-			resp.Diagnostics.Append(d...)
-		}
-	}()
-
 	status, err := v.start(ctx, virtualMachine.ID)
 	model.Status = basetypes.NewStringValue(status)
 	if err != nil {
@@ -482,6 +605,29 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		)
 		return
 	}
+
+	networkingTimeout, diag := timeouts.Networking.ValueGoDuration()
+	if diag.HasError() {
+		resp.Diagnostics.Append(diag...)
+		return
+	}
+	networking, err := v.getNetworking(ctx, model.Name.ValueString(), networkingTimeout)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to determine networking information",
+			err.Error(),
+		)
+		return
+	}
+
+	networkingModelObject, diags := (&networkingModel{}).asObjectValue(ctx, networking)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+	model.Networking = networkingModelObject
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
 func (v *virtualMachineResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
@@ -532,37 +678,31 @@ func (v *virtualMachineResource) Delete(ctx context.Context, req resource.Delete
 }
 
 func (v *virtualMachineResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	// Convert ID to Int 
 	id, err := strconv.Atoi(req.ID)
 	if err != nil {
 		resp.Diagnostics.AddError(
-			"UnexpectedImportIdentifier",
-			fmt.Sprintf("Expected import identifier with format: ID. Got: %s", req.ID),
+			"Unexpected import identifier",
+			fmt.Sprintf("Expected the import identifier with to be an int64 but got: %s", req.ID),
 		)
 	}
 
 	attrPath := path.Root("id")
-
 	if attrPath.Equal(path.Empty()) {
 		resp.Diagnostics.AddError(
-			"Resource Import Passthrough Missing Attribute Path",
+			"Resource import passthrough missing attribute path",
 			"This is always an error in the provider. Please report the following to the provider developer:\n\n"+
 				"Resource ImportState method call to ImportStatePassthroughIntID path must be set to a valid attribute path that can accept a int value.",
 		)
 	}
-
 	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, attrPath, id)...)
-	// Initialize timeouts
-	timeouts := timeoutsModel{
-		Read:   timetypes.NewGoDurationValueFromStringMust("5m"),
-		Create: timetypes.NewGoDurationValueFromStringMust("5m"),
-		Update: timetypes.NewGoDurationValueFromStringMust("5m"),
-		Delete: timetypes.NewGoDurationValueFromStringMust("5m"),
-		Kill:   timetypes.NewGoDurationValueFromStringMust("30s"),
-	}
-
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timeouts"), &timeouts)...)
-
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("timeouts"), &timeoutsModel{
+		Read:       timetypes.NewGoDurationValueFromStringMust(defaultTimeoutRead),
+		Create:     timetypes.NewGoDurationValueFromStringMust(defaultTimeoutCreate),
+		Update:     timetypes.NewGoDurationValueFromStringMust(defaultTimeoutUpdate),
+		Delete:     timetypes.NewGoDurationValueFromStringMust(defaultTimeoutDelete),
+		Kill:       timetypes.NewGoDurationValueFromStringMust(defaultTimeoutKill),
+		Networking: timetypes.NewGoDurationValueFromStringMust(defaultTimeoutNetworking),
+	})...)
 }
 
 func (v *virtualMachineResource) start(ctx context.Context, identifier int64) (status string, err error) {
@@ -668,4 +808,9 @@ func (v *virtualMachineResource) stop(ctx context.Context, identifier int64, kil
 			return status, fmt.Errorf("stopping virtual machine `%d` was cancelled or reached timeout", identifier)
 		}
 	}
+}
+
+func (v *virtualMachineResource) getNetworking(ctx context.Context, virtualMachineName string, networkingTimeout time.Duration) (networking virtualMachineNetworking, err error) {
+	// TODO: implement networking metadata retrieving
+	return networking, err
 }

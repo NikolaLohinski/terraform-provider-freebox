@@ -83,7 +83,8 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								disk_type = "qcow2"
 								disk_path = "` + diskImagePath + `"
 								timeouts = {
-									kill = "5s" // Alpine image used hangs on SIGTERM and needs a SIGKILL to terminate
+									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
+									networking = "500ms" // The image used for tests does not register to the network
 								}
 							}
 						`,
@@ -106,12 +107,6 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								return nil
 							},
 						),
-					},
-					// ImportState Testing
-					{
-						ResourceName:      "freebox_virtual_machine." + name,
-						ImportState:       true,
-						ImportStateVerify: true,
 					},
 				},
 			})
@@ -145,7 +140,8 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								disk_type = "qcow2"
 								disk_path = "` + diskImagePath + `"
 								timeouts = {
-									kill = "5s" // Alpine image used hangs on SIGTERM and needs a SIGKILL to terminate
+									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
+									networking = "500ms" // The image used for tests does not register to the network
 								}
 							}
 						`,
@@ -163,7 +159,8 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								disk_type = "qcow2"
 								disk_path = "` + diskImagePath + `"
 								timeouts = {
-									kill = "5s" // Alpine image used hangs on SIGTERM and needs a SIGKILL to terminate
+									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
+									networking = "500ms" // The image used for tests does not register to the network
 								}
 								enable_cloudinit   = true
 								cloudinit_hostname = "` + name + `"
@@ -188,6 +185,54 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								return nil
 							},
 						),
+					},
+				},
+			})
+		})
+	})
+	Context("import and delete (ID)", func() {
+		var (
+			virtualMachineID = new(int64)
+			name             = new(string)
+		)
+		BeforeEach(func() {
+			splitName := strings.Split(("test-ID-" + uuid.New().String())[:30], "-")
+			*name = strings.Join(splitName[:len(splitName)-1], "-")
+			vm := Must(freeboxClient.CreateVirtualMachine(ctx, freeboxTypes.VirtualMachinePayload{
+				Name:     *name,
+				VCPUs:    1,
+				Memory:   300,
+				DiskType: freeboxTypes.QCow2Disk,
+				DiskPath: freeboxTypes.Base64Path(diskImagePath),
+			}))
+			*virtualMachineID = vm.ID
+		})
+		It("should import and then delete a virtual machine", func() {
+			resource.UnitTest(GinkgoT(), resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: providerBlock + `
+							resource "freebox_virtual_machine" "` + *name + `" {
+								vcpus     = 1
+								memory    = 300
+								name      = "` + *name + `"
+								disk_type = "qcow2"
+								disk_path = "` + diskImagePath + `"
+							}
+						`,
+						ResourceName:       "freebox_virtual_machine." + *name,
+						ImportState:        true,
+						ImportStateId:      strconv.Itoa(int(*virtualMachineID)),
+						ImportStatePersist: true,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "name", *name),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "vcpus", "1"),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "memory", "300"),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_type", freeboxTypes.QCow2Disk),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_path", diskImagePath),
+						),
+						Destroy: true,
 					},
 				},
 			})
