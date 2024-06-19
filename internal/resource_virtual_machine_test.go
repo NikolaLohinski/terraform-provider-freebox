@@ -9,7 +9,6 @@ import (
 
 	"github.com/nikolalohinski/free-go/client"
 	"github.com/nikolalohinski/free-go/types"
-	freeboxTypes "github.com/nikolalohinski/free-go/types"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -84,7 +83,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								disk_path = "` + diskImagePath + `"
 								timeouts = {
 									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
-									networking = "500ms" // The image used for tests does not register to the network
+									networking = "0s" // The image used for tests does not register to the network
 								}
 							}
 						`,
@@ -92,7 +91,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "name", name),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "vcpus", "1"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "memory", "300"),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_type", freeboxTypes.QCow2Disk),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_type", types.QCow2Disk),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_path", diskImagePath),
 							func(s *terraform.State) error {
 								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
@@ -102,7 +101,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								Expect(vm.VCPUs).To(Equal(int64(1)))
 								Expect(vm.Memory).To(Equal(int64(300)))
 								Expect(vm.Name).To(Equal(name))
-								Expect(vm.DiskType).To(Equal(freeboxTypes.QCow2Disk))
+								Expect(vm.DiskType).To(Equal(types.QCow2Disk))
 								Expect(vm.DiskPath).To(Equal(types.Base64Path(diskImagePath)))
 								return nil
 							},
@@ -141,7 +140,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								disk_path = "` + diskImagePath + `"
 								timeouts = {
 									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
-									networking = "500ms" // The image used for tests does not register to the network
+									networking = "0s" // The image used for tests does not register to the network
 								}
 							}
 						`,
@@ -160,7 +159,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								disk_path = "` + diskImagePath + `"
 								timeouts = {
 									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
-									networking = "500ms" // The image used for tests does not register to the network
+									networking = "0s" // The image used for tests does not register to the network
 								}
 								enable_cloudinit   = true
 								cloudinit_hostname = "` + name + `"
@@ -198,12 +197,12 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 		BeforeEach(func() {
 			splitName := strings.Split(("test-ID-" + uuid.New().String())[:30], "-")
 			*name = strings.Join(splitName[:len(splitName)-1], "-")
-			vm := Must(freeboxClient.CreateVirtualMachine(ctx, freeboxTypes.VirtualMachinePayload{
+			vm := Must(freeboxClient.CreateVirtualMachine(ctx, types.VirtualMachinePayload{
 				Name:     *name,
 				VCPUs:    1,
 				Memory:   300,
-				DiskType: freeboxTypes.QCow2Disk,
-				DiskPath: freeboxTypes.Base64Path(diskImagePath),
+				DiskType: types.QCow2Disk,
+				DiskPath: types.Base64Path(diskImagePath),
 			}))
 			*virtualMachineID = vm.ID
 		})
@@ -229,7 +228,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "name", *name),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "vcpus", "1"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "memory", "300"),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_type", freeboxTypes.QCow2Disk),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_type", types.QCow2Disk),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_path", diskImagePath),
 						),
 						Destroy: true,

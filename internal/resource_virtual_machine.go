@@ -3,8 +3,10 @@ package internal
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
@@ -34,7 +36,9 @@ var (
 	defaultTimeoutUpdate     = "5m"
 	defaultTimeoutDelete     = "5m"
 	defaultTimeoutKill       = "30s"
-	defaultTimeoutNetworking = "3m"
+	defaultTimeoutNetworking = "1m"
+
+	errNetworkingTimeout = errors.New("NetworkingTimeoutError")
 )
 
 type virtualMachineStateChangeEvent struct {
@@ -42,9 +46,9 @@ type virtualMachineStateChangeEvent struct {
 	Status string `json:"status"`
 }
 
-type virtualMachineNetworking struct {
+type networkBind struct {
 	Interface string
-	IPv6      string
+	IPv6      []string
 	IPv4      string
 }
 
@@ -75,7 +79,7 @@ type virtualMachineModel struct {
 	CloudInitUserData types.String `tfsdk:"cloudinit_userdata"`
 	CloudHostName     types.String `tfsdk:"cloudinit_hostname"`
 	Timeouts          types.Object `tfsdk:"timeouts"`
-	Networking        types.Object `tfsdk:"networking"`
+	Networking        types.Set    `tfsdk:"networking"`
 }
 
 func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.VirtualMachine) (diagnostics diag.Diagnostics) {
@@ -102,6 +106,51 @@ func (v *virtualMachineModel) fromClientType(virtualMachine freeboxTypes.Virtual
 		}
 		v.BindUSBPorts, diagnostics = basetypes.NewListValue(types.StringType, usbPorts)
 	}
+	return diagnostics
+}
+func (v *virtualMachineModel) setNetworking(binds []networkBind) (diagnostics diag.Diagnostics) {
+	networking := []attr.Value{}
+	bindType := map[string]attr.Type{
+		"ipv6": basetypes.SetType{
+			ElemType: basetypes.StringType{},
+		},
+		"ipv4":      basetypes.StringType{},
+		"interface": basetypes.StringType{},
+	}
+	for _, bind := range binds {
+		if bind.Interface == "" {
+			diagnostics.AddError("Incomplete networking information", "Missing interface name in network bind object")
+			return
+		}
+		if bind.IPv4 == "" {
+			diagnostics.AddError("Incomplete networking information", "Missing IPv4 in network bind object")
+			return
+		}
+		ipv6Values := []attr.Value{}
+		for _, address := range bind.IPv6 {
+			ipv6Values = append(ipv6Values, basetypes.NewStringValue(address))
+		}
+		var ipv6 basetypes.SetValue
+		ipv6, diagnostics = basetypes.NewSetValue(basetypes.StringType{}, ipv6Values)
+		if diagnostics.HasError() {
+			return
+		}
+
+		var bindObjectValue attr.Value
+		bindObjectValue, diagnostics = basetypes.NewObjectValue(bindType, map[string]attr.Value{
+			"interface": basetypes.NewStringValue(bind.Interface),
+			"ipv4":      basetypes.NewStringValue(bind.IPv4),
+			"ipv6":      ipv6,
+		})
+		if diagnostics.HasError() {
+			return
+		}
+		networking = append(networking, bindObjectValue)
+	}
+
+	v.Networking, diagnostics = basetypes.NewSetValue(basetypes.ObjectType{
+		AttrTypes: bindType,
+	}, networking)
 	return diagnostics
 }
 
@@ -132,36 +181,6 @@ type timeoutsModel struct {
 	Delete     timetypes.GoDuration `tfsdk:"delete"`
 	Kill       timetypes.GoDuration `tfsdk:"kill"`
 	Networking timetypes.GoDuration `tfsdk:"networking"`
-}
-
-type networkingModel struct {
-	Interface types.String `tfsdk:"interface"`
-	IPv4      types.String `tfsdk:"ipv6"`
-	IPv6      types.String `tfsdk:"ipv4"`
-}
-
-func (n *networkingModel) asObjectValue(ctx context.Context, networking virtualMachineNetworking) (basetypes.ObjectValue, diag.Diagnostics) {
-	if networking.IPv4 != "" {
-		n.IPv4 = basetypes.NewStringValue(networking.IPv4)
-	} else {
-		n.IPv4 = basetypes.NewStringNull()
-	}
-	if networking.IPv6 != "" {
-		n.IPv6 = basetypes.NewStringValue(networking.IPv6)
-	} else {
-		n.IPv6 = basetypes.NewStringNull()
-	}
-	if networking.Interface != "" {
-		n.Interface = basetypes.NewStringValue(networking.Interface)
-	} else {
-		n.Interface = basetypes.NewStringNull()
-	}
-
-	return basetypes.NewObjectValueFrom(ctx, map[string]attr.Type{
-		"ipv6":      basetypes.StringType{},
-		"ipv4":      basetypes.StringType{},
-		"interface": basetypes.StringType{},
-	}, n)
 }
 
 func (v *virtualMachineResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -327,35 +346,24 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 					},
 				},
 			},
-			"networking": schema.SingleNestedAttribute{
+			"networking": schema.SetNestedAttribute{
 				Computed:            true,
-				MarkdownDescription: "Networking information of the virtual machine",
-				Default: objectdefault.StaticValue(
-					types.ObjectValueMust(
-						map[string]attr.Type{
-							"ipv6":      basetypes.StringType{},
-							"ipv4":      basetypes.StringType{},
-							"interface": basetypes.StringType{},
+				MarkdownDescription: "Network binds of the virtual machine",
+				NestedObject: schema.NestedAttributeObject{
+					Attributes: map[string]schema.Attribute{
+						"ipv6": schema.SetAttribute{
+							Computed:            true,
+							MarkdownDescription: "List of IPV6 addresses on the network interface",
+							ElementType:         types.StringType,
 						},
-						map[string]attr.Value{
-							"ipv4":      types.StringNull(),
-							"ipv6":      types.StringNull(),
-							"interface": types.StringNull(),
+						"ipv4": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "Unique IPV4 address on the network interface",
 						},
-					),
-				),
-				Attributes: map[string]schema.Attribute{
-					"ipv6": schema.StringAttribute{
-						Computed:            true,
-						MarkdownDescription: "IPV6 address on the local network",
-					},
-					"ipv4": schema.StringAttribute{
-						Computed:            true,
-						MarkdownDescription: "IPV4 address on the local network",
-					},
-					"interface": schema.StringAttribute{
-						Computed:            true,
-						MarkdownDescription: "Network interface used by the virtual machine",
+						"interface": schema.StringAttribute{
+							Computed:            true,
+							MarkdownDescription: "Name of the network interface the virtual machine is bound to",
+						},
 					},
 				},
 			},
@@ -437,21 +445,20 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.Append(diags...)
 		return
 	}
-	networking, err := v.getNetworking(ctx, model.Name.ValueString(), networkingTimeout)
-	if err != nil {
+	binds, err := v.getNetworkBinds(ctx, virtualMachine, networkingTimeout)
+	if err == errNetworkingTimeout {
+		resp.Diagnostics.AddWarning("Networking Timeout", "Reached timeout of \""+networkingTimeout.String()+"\" while waiting for networking to be available")
+	} else if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to determine networking information",
 			err.Error(),
 		)
 		return
 	}
-
-	networkingModelObject, diags := (&networkingModel{}).asObjectValue(ctx, networking)
-	if diags.HasError() {
+	if diags := model.setNetworking(binds); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
-	model.Networking = networkingModelObject
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
@@ -488,6 +495,7 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		resultChannel <- virtualMachine
 	}()
 
+	var virtualMachine freeboxTypes.VirtualMachine
 	select {
 	case <-ctx.Done():
 		resp.Diagnostics.AddError(
@@ -495,8 +503,8 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 			fmt.Sprintf("reading virtual machine `%d` was cancelled or reached timeout", model.ID.ValueInt64()),
 		)
 		return
-	case vm := <-resultChannel:
-		if d := model.fromClientType(vm); d.HasError() {
+	case virtualMachine = <-resultChannel:
+		if d := model.fromClientType(virtualMachine); d.HasError() {
 			resp.Diagnostics.Append(d...)
 			return
 		}
@@ -507,26 +515,26 @@ func (v *virtualMachineResource) Read(ctx context.Context, req resource.ReadRequ
 		)
 		return
 	}
+
 	networkingTimeout, diag := timeouts.Networking.ValueGoDuration()
 	if diag.HasError() {
 		resp.Diagnostics.Append(diag...)
 		return
 	}
-	networking, err := v.getNetworking(ctx, model.Name.ValueString(), networkingTimeout)
-	if err != nil {
+	binds, err := v.getNetworkBinds(ctx, virtualMachine, networkingTimeout)
+	if err == errNetworkingTimeout {
+		resp.Diagnostics.AddWarning("Networking Timeout", "Reached timeout of \""+networkingTimeout.String()+"\" while waiting for networking to be available")
+	} else if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to determine networking information",
 			err.Error(),
 		)
 		return
 	}
-
-	networkingModelObject, diags := (&networkingModel{}).asObjectValue(ctx, networking)
-	if diags.HasError() {
+	if diags := model.setNetworking(binds); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
-	model.Networking = networkingModelObject
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
@@ -611,21 +619,20 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		resp.Diagnostics.Append(diag...)
 		return
 	}
-	networking, err := v.getNetworking(ctx, model.Name.ValueString(), networkingTimeout)
-	if err != nil {
+	binds, err := v.getNetworkBinds(ctx, virtualMachine, networkingTimeout)
+	if err == errNetworkingTimeout {
+		resp.Diagnostics.AddWarning("Networking Timeout", "Reached timeout of \""+networkingTimeout.String()+"\" while waiting for networking to be available")
+	} else if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to determine networking information",
 			err.Error(),
 		)
 		return
 	}
-
-	networkingModelObject, diags := (&networkingModel{}).asObjectValue(ctx, networking)
-	if diags.HasError() {
+	if diags := model.setNetworking(binds); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
-	model.Networking = networkingModelObject
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
@@ -810,7 +817,51 @@ func (v *virtualMachineResource) stop(ctx context.Context, identifier int64, kil
 	}
 }
 
-func (v *virtualMachineResource) getNetworking(ctx context.Context, virtualMachineName string, networkingTimeout time.Duration) (networking virtualMachineNetworking, err error) {
-	// TODO: implement networking metadata retrieving
-	return networking, err
+func (v *virtualMachineResource) getNetworkBinds(ctx context.Context, virtualMachine freeboxTypes.VirtualMachine, networkingTimeout time.Duration) ([]networkBind, error) {
+	successChannel := make(chan ([]networkBind))
+	errorChannel := make(chan (error))
+	go func() {
+		var binds []networkBind
+		interfaces, err := v.client.ListLanInterfaceInfo(ctx)
+		if err != nil {
+			errorChannel <- fmt.Errorf("failed to list lan interface info: %s", err)
+			return
+		}
+		for _, interfaceInfo := range interfaces {
+			interfaceName := interfaceInfo.Name
+			if interfaceInfo.HostCount == 0 {
+				continue
+			}
+			hosts, err := v.client.GetLanInterface(ctx, interfaceName)
+			if err != nil {
+				errorChannel <- fmt.Errorf("failed to get lan interface \"%s\": %s", interfaceName, err)
+				return
+			}
+			for _, host := range hosts {
+				if host.L2Ident.Type == "mac_address" && strings.EqualFold(host.L2Ident.ID, virtualMachine.Mac) {
+					bind := networkBind{
+						Interface: interfaceName,
+					}
+					for _, connectivity := range host.L3Connectivities {
+						if connectivity.Type == freeboxTypes.IPV4 {
+							bind.IPv4 = connectivity.Address
+						}
+						if connectivity.Type == freeboxTypes.IPV6 {
+							bind.IPv6 = append(bind.IPv6, connectivity.Address)
+						}
+					}
+					binds = append(binds, bind)
+				}
+			}
+		}
+		successChannel <- binds
+	}()
+	select {
+	case binds := <-successChannel:
+		return binds, nil
+	case err := <-errorChannel:
+		return nil, err
+	case <-time.After(networkingTimeout):
+		return nil, errNetworkingTimeout
+	}
 }
