@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -818,14 +819,12 @@ func (v *virtualMachineResource) stop(ctx context.Context, identifier int64, kil
 }
 
 func (v *virtualMachineResource) getNetworkBinds(ctx context.Context, virtualMachine freeboxTypes.VirtualMachine, networkingTimeout time.Duration) ([]networkBind, error) {
-	successChannel := make(chan ([]networkBind))
-	errorChannel := make(chan (error))
-	go func() {
+	timeoutDeadline := time.After(networkingTimeout)
+	for {
 		var binds []networkBind
 		interfaces, err := v.client.ListLanInterfaceInfo(ctx)
 		if err != nil {
-			errorChannel <- fmt.Errorf("failed to list lan interface info: %s", err)
-			return
+			return nil, fmt.Errorf("failed to list lan interface info: %s", err)
 		}
 		for _, interfaceInfo := range interfaces {
 			interfaceName := interfaceInfo.Name
@@ -834,8 +833,7 @@ func (v *virtualMachineResource) getNetworkBinds(ctx context.Context, virtualMac
 			}
 			hosts, err := v.client.GetLanInterface(ctx, interfaceName)
 			if err != nil {
-				errorChannel <- fmt.Errorf("failed to get lan interface \"%s\": %s", interfaceName, err)
-				return
+				return nil, fmt.Errorf("failed to get lan interface \"%s\": %s", interfaceName, err)
 			}
 			for _, host := range hosts {
 				if host.L2Ident.Type == "mac_address" && strings.EqualFold(host.L2Ident.ID, virtualMachine.Mac) {
@@ -854,14 +852,16 @@ func (v *virtualMachineResource) getNetworkBinds(ctx context.Context, virtualMac
 				}
 			}
 		}
-		successChannel <- binds
-	}()
-	select {
-	case binds := <-successChannel:
-		return binds, nil
-	case err := <-errorChannel:
-		return nil, err
-	case <-time.After(networkingTimeout):
-		return nil, errNetworkingTimeout
+		if len(binds) > 0 {
+			return binds, nil
+		}
+		select {
+		case <-timeoutDeadline:
+			return nil, errNetworkingTimeout
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case <-time.After(slices.Min([]time.Duration{networkingTimeout / 10, time.Second * 5})):
+			// Just wait for at most 5s before retrying
+		}
 	}
 }

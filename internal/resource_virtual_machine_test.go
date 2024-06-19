@@ -218,6 +218,9 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								name      = "` + *name + `"
 								disk_type = "qcow2"
 								disk_path = "` + diskImagePath + `"
+								timeouts = {
+									networking = "0s" // The image used for tests does not register to the network
+								}
 							}
 						`,
 						ResourceName:       "freebox_virtual_machine." + *name,
