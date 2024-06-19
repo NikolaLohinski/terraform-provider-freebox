@@ -848,7 +848,9 @@ func (v *virtualMachineResource) getNetworkBinds(ctx context.Context, virtualMac
 							bind.IPv6 = append(bind.IPv6, connectivity.Address)
 						}
 					}
-					binds = append(binds, bind)
+					if bind.IPv4 != "" && bind.IPv6 != nil {
+						binds = append(binds, bind)
+					}
 				}
 			}
 		}

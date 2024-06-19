@@ -20,9 +20,28 @@ import (
 
 var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() {
 	var (
-		diskFolder    = "Logiciels"
-		diskImageName = "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2"
-		diskImagePath = root + "/" + diskFolder + "/" + diskImageName
+		testDisks = map[string]struct {
+			filename  string
+			directory string
+			filepath  string
+			digest    string
+			source    string
+		}{
+			"alpine": {
+				filename:  "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
+				directory: "VMs",
+				filepath:  root + "/VMs/terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
+				digest:    "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
+				source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
+			},
+			"ubuntu": {
+				filename:  "terraform-provider-freebox-ubuntu-22.04-aarch64.qcow2",
+				directory: "VMs",
+				filepath:  root + "/VMs/terraform-provider-freebox-ubuntu-22.04-aarch64.qcow2",
+				digest:    "http://ftp.free.fr/.private/ubuntu-cloud/releases/jammy/release/SHA256SUMS",
+				source:    "http://ftp.free.fr/.private/ubuntu-cloud/releases/jammy/release/ubuntu-22.04-server-cloudimg-arm64.img",
+			},
+		}
 
 		ctx           context.Context
 		freeboxClient client.Client
@@ -35,35 +54,35 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 		// Login
 		permissions := Must(freeboxClient.Login(ctx))
 		Expect(permissions.Settings).To(BeTrue(), fmt.Sprintf("the token for the '%s' app does not appear to have the permissions to modify freebox settings", os.Getenv("FREEBOX_APP_ID")))
-		// Create directory
-		_, err := freeboxClient.CreateDirectory(ctx, root, diskFolder)
-		Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
-		// Check that the image exists and if so, do an early return
-		_, err = freeboxClient.GetFileInfo(ctx, diskImagePath)
-		if err == nil {
-			return
-		}
-		if err != nil && err == client.ErrPathNotFound {
-			// If not, then pre-download the image
-			taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
-				DownloadURLs: []string{
-					"https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
-				},
-				Hash:              "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
-				DownloadDirectory: root + "/" + diskFolder,
-				Filename:          diskImageName,
-			})
-			Expect(err).To(BeNil())
-			// Wait for download task to be done
-			Eventually(func() types.DownloadTask {
-				downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+		for _, disk := range testDisks {
+			// Create directory
+			_, err := freeboxClient.CreateDirectory(ctx, root, disk.directory)
+			Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
+			// Check that the image exists and if so, do an early return
+			_, err = freeboxClient.GetFileInfo(ctx, disk.filepath)
+			if err == nil {
+				return
+			}
+			if err != nil && err == client.ErrPathNotFound {
+				// If not, then pre-download the image
+				taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
+					DownloadURLs:      []string{disk.source},
+					Hash:              disk.digest,
+					DownloadDirectory: root + "/" + disk.directory,
+					Filename:          disk.filename,
+				})
 				Expect(err).To(BeNil())
-				return downloadTask
-			}, "5m").Should(MatchFields(IgnoreExtras, Fields{
-				"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
-			}))
-		} else {
-			Expect(err).To(BeNil())
+				// Wait for download task to be done
+				Eventually(func() types.DownloadTask {
+					downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+					Expect(err).To(BeNil())
+					return downloadTask
+				}, "5m").Should(MatchFields(IgnoreExtras, Fields{
+					"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
+				}))
+			} else {
+				Expect(err).To(BeNil())
+			}
 		}
 	})
 	Context("create and delete (CD)", func() {
@@ -80,7 +99,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								memory    = 300
 								name      = "` + name + `"
 								disk_type = "qcow2"
-								disk_path = "` + diskImagePath + `"
+								disk_path = "` + testDisks["alpine"].filepath + `"
 								timeouts = {
 									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
 									networking = "0s" // The image used for tests does not register to the network
@@ -92,7 +111,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "vcpus", "1"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "memory", "300"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_type", types.QCow2Disk),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_path", diskImagePath),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_path", testDisks["alpine"].filepath),
 							func(s *terraform.State) error {
 								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
 								Expect(err).To(BeNil())
@@ -102,7 +121,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								Expect(vm.Memory).To(Equal(int64(300)))
 								Expect(vm.Name).To(Equal(name))
 								Expect(vm.DiskType).To(Equal(types.QCow2Disk))
-								Expect(vm.DiskPath).To(Equal(types.Base64Path(diskImagePath)))
+								Expect(vm.DiskPath).To(Equal(types.Base64Path(testDisks["alpine"].filepath)))
 								return nil
 							},
 						),
@@ -137,11 +156,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								memory    = 300
 								name      = "` + name + `"
 								disk_type = "qcow2"
-								disk_path = "` + diskImagePath + `"
-								timeouts = {
-									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
-									networking = "0s" // The image used for tests does not register to the network
-								}
+								disk_path = "` + testDisks["ubuntu"].filepath + `"
 							}
 						`,
 						Check: resource.ComposeAggregateTestCheckFunc(
@@ -156,11 +171,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								memory    = 300
 								name      = "` + name + `"
 								disk_type = "qcow2"
-								disk_path = "` + diskImagePath + `"
-								timeouts = {
-									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
-									networking = "0s" // The image used for tests does not register to the network
-								}
+								disk_path = "` + testDisks["ubuntu"].filepath + `"
 								enable_cloudinit   = true
 								cloudinit_hostname = "` + name + `"
 								cloudinit_userdata = yamlencode(jsondecode(<<EOF
@@ -200,9 +211,9 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 			vm := Must(freeboxClient.CreateVirtualMachine(ctx, types.VirtualMachinePayload{
 				Name:     *name,
 				VCPUs:    1,
-				Memory:   300,
+				Memory:   2000,
 				DiskType: types.QCow2Disk,
-				DiskPath: types.Base64Path(diskImagePath),
+				DiskPath: types.Base64Path(testDisks["alpine"].filepath),
 			}))
 			*virtualMachineID = vm.ID
 		})
@@ -214,10 +225,10 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 						Config: providerBlock + `
 							resource "freebox_virtual_machine" "` + *name + `" {
 								vcpus     = 1
-								memory    = 300
+								memory    = 2000
 								name      = "` + *name + `"
 								disk_type = "qcow2"
-								disk_path = "` + diskImagePath + `"
+								disk_path = "` + testDisks["alpine"].filepath + `"
 								timeouts = {
 									networking = "0s" // The image used for tests does not register to the network
 								}
@@ -232,7 +243,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "vcpus", "1"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "memory", "300"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_type", types.QCow2Disk),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_path", diskImagePath),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+*name, "disk_path", testDisks["ubuntu"].filepath),
 						),
 						Destroy: true,
 					},
