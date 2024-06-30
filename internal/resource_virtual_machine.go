@@ -188,6 +188,22 @@ func (v *virtualMachineResource) Metadata(ctx context.Context, req resource.Meta
 	resp.TypeName = req.ProviderTypeName + "_virtual_machine"
 }
 
+type virtualMachineStaticStatusModifier struct {
+	status string
+}
+
+func (m virtualMachineStaticStatusModifier) Description(_ context.Context) string {
+	return "The value of the virtual machine must be \"" + m.status + "\"."
+}
+
+func (m virtualMachineStaticStatusModifier) MarkdownDescription(ctx context.Context) string {
+	return m.Description(ctx)
+}
+
+func (m virtualMachineStaticStatusModifier) PlanModifyString(_ context.Context, req planmodifier.StringRequest, resp *planmodifier.StringResponse) {
+	resp.PlanValue = basetypes.NewStringValue(m.status)
+}
+
 func (v *virtualMachineResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
 		MarkdownDescription: "Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
@@ -206,6 +222,9 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			"status": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "VM status",
+				PlanModifiers: []planmodifier.String{virtualMachineStaticStatusModifier{
+					status: freeboxTypes.RunningStatus,
+				}},
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
