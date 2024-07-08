@@ -123,6 +123,7 @@ func (p *freeboxProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewRemoteFileResource,
 		NewVirtualDiskResource,
 		NewVirtualMachineResource,
+		NewPortForwardingResource,
 	}
 }
 

@@ -8,6 +8,7 @@
 
 - [freebox](./provider.md)
   - [Resources]()
+    - [freebox_port_forwarding](./resources/port_forwarding.md)
     - [freebox_remote_file](./resources/remote_file.md)
     - [freebox_virtual_disk](./resources/virtual_disk.md)
     - [freebox_virtual_machine](./resources/virtual_machine.md)
