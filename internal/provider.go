@@ -121,6 +121,7 @@ func (p *freeboxProvider) Configure(ctx context.Context, req provider.ConfigureR
 func (p *freeboxProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
 		NewVirtualMachineResource,
+		NewRemoteFileResource,
 	}
 }
 
