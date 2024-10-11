@@ -1,0 +1,1 @@
+This file is to demonstrate the download of a file from the server.
