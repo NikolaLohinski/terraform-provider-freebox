@@ -283,7 +283,14 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	// TODO: Stop and delete the old download task.
+	if err := stopAndDeleteDownloadTask(ctx, v.client, oldModel.TaskID.ValueInt64()); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to delete download task and its files",
+			err.Error(),
+		)
+
+		return
+	}
 
 	if err := deleteFilesIfExist(ctx, v.client, []string{
 		oldModel.DestinationPath.ValueString(),
@@ -329,34 +336,21 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
+	if err := stopAndDeleteDownloadTask(ctx, v.client, model.TaskID.ValueInt64()); err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to delete download task and its files",
+			err.Error(),
+		)
+
+		return
+	}
+
 	if err := deleteFilesIfExist(ctx, v.client, []string{model.DestinationPath.ValueString()}); err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to delete file",
 			err.Error(),
 		)
 		return
-	}
-
-	// TODO: Stop and delete the download task
-
-	task, err := v.client.GetDownloadTask(ctx, model.TaskID.ValueInt64())
-	if err != nil {
-		resp.Diagnostics.AddWarning(
-			"Failed to get download task",
-			err.Error(),
-		)
-	}
-
-	switch task.Status {
-	case freeboxTypes.DownloadTaskStatusDownloading:
-		// TODO stop the task
-		resp.Diagnostics.AddError(
-			"Download task is still running",
-			"Wait for the download task to complete before deleting the resource",
-		)
-		return
-	case freeboxTypes.DownloadTaskStatusDone, freeboxTypes.DownloadTaskStatusError:
-		// Nothing to do
 	}
 }
 
@@ -383,6 +377,28 @@ func (v *remoteFileResource) ImportState(ctx context.Context, req resource.Impor
 	model.populateFromDownloadTask(task)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) (error) {
+	if err := c.UpdateDownloadTask(ctx, taskID, freeboxTypes.DownloadTaskUpdate{
+		Status: freeboxTypes.DownloadTaskStatusStopped,
+	}); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("stop download task: %w", err)
+	}
+
+	if err := c.EraseDownloadTask(ctx, taskID); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("erase download task: %w", err)
+	}
+
+	return nil
 }
 
 func deleteFilesIfExist(ctx context.Context, c client.Client, paths []string) (error) {
