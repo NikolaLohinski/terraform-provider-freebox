@@ -3,7 +3,6 @@ package internal_test
 import (
 	"context"
 	"fmt"
-	"os"
 	"path"
 	"strconv"
 	"strings"
@@ -21,53 +20,33 @@ import (
 
 var _ = Context(`resource "freebox_remote_file" { ... }`, Ordered, func() {
 	var (
-		files = map[string]struct {
-			filename  string
-			directory string
-			filepath  string
-			digest    string
-			source    string
-		}{
+		files = map[string]file{
+			"alpine": existingDisk,
 			"example": {
 				filename:  "terraform-provider-freebox-example.txt",
 				directory: "VMs",
 				filepath:  path.Join(root, "VMs/terraform-provider-freebox-example.txt"),
 				digest:    "sha256:184725f66890632c7e67ec1713c50aa181c1bc60ee166c9ae13a48f1d60684b0",
-				source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/file-to-download.txt",
-			},
-			"alpine": {
-				filename:  "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
-				directory: "VMs",
-				filepath:  path.Join(root, "VMs/terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2"),
-				digest:    "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
-				source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
+				source:    "https://raw.githubusercontent.com/holyhope/terraform-provider-freebox/daef06ced800f81f0ae3355bae1ace9795d455b9/examples/file-to-download.txt",
 			},
 		}
 
 		freeboxClient client.Client
 
-		cleanAllFile func(context.Context)
+		cleanAllFile func(context.Context, ...file)
 	)
 
 	BeforeAll(func(ctx SpecContext) {
-		freeboxClient = Must(client.New(endpoint, version)).
-			WithAppID(appID).
-			WithPrivateToken(token)
-		// Login
-		permissions := Must(freeboxClient.Login(ctx))
-		Expect(permissions.Settings).To(BeTrue(), fmt.Sprintf("the token for the '%s' app does not appear to have the permissions to modify freebox settings", os.Getenv("FREEBOX_APP_ID")))
-
-		for _, file := range files {
-			// Create directory
-			_, err := freeboxClient.CreateDirectory(ctx, root, file.directory)
-			Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
-		}
-
-		cleanAllFile(ctx)
+		// Note: alpine already exists
+		// Download the example file
+		file := files["example"]
+		// Create directory
+		_, err := freeboxClient.CreateDirectory(ctx, root, file.directory)
+		Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
 	})
 
 	AfterAll(func(ctx SpecContext) {
-		cleanAllFile(ctx)
+		cleanAllFile(ctx, files["example"])
 	})
 
 	Context("create and delete (CD)", func() {
@@ -248,7 +227,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, Ordered, func() {
 		})
 	})
 
-	cleanAllFile = func (ctx context.Context) {
+	cleanAllFile = func (ctx context.Context, files ...file) {
 		diskToRemove := []string{}
 		for _, file := range files {
 			// Check that the file exists and if so, delete it
