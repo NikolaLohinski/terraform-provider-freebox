@@ -1,9 +1,6 @@
 package internal_test
 
 import (
-	"context"
-	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -27,13 +24,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 			digest    string
 			source    string
 		}{
-			"alpine": {
-				filename:  "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
-				directory: "VMs",
-				filepath:  root + "/VMs/terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
-				digest:    "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
-				source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
-			},
+			"alpine": existingDisk,
 			"ubuntu": {
 				filename:  "terraform-provider-freebox-ubuntu-22.04-aarch64.qcow2",
 				directory: "VMs",
@@ -42,51 +33,42 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 				source:    "http://ftp.free.fr/.private/ubuntu-cloud/releases/jammy/release/ubuntu-22.04-server-cloudimg-arm64.img",
 			},
 		}
-
-		ctx           context.Context
-		freeboxClient client.Client
 	)
-	BeforeAll(func() {
-		freeboxClient = Must(client.New(endpoint, version)).
-			WithAppID(appID).
-			WithPrivateToken(token)
-		ctx = context.Background()
-		// Login
-		permissions := Must(freeboxClient.Login(ctx))
-		Expect(permissions.Settings).To(BeTrue(), fmt.Sprintf("the token for the '%s' app does not appear to have the permissions to modify freebox settings", os.Getenv("FREEBOX_APP_ID")))
-		for _, disk := range testDisks {
-			// Create directory
-			_, err := freeboxClient.CreateDirectory(ctx, root, disk.directory)
-			Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
-			// Check that the image exists and if so, do an early return
-			_, err = freeboxClient.GetFileInfo(ctx, disk.filepath)
-			if err == nil {
-				return
-			}
-			if err != nil && err == client.ErrPathNotFound {
-				// If not, then pre-download the image
-				taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
-					DownloadURLs:      []string{disk.source},
-					Hash:              disk.digest,
-					DownloadDirectory: root + "/" + disk.directory,
-					Filename:          disk.filename,
-				})
+	BeforeAll(func(ctx SpecContext) {
+		// Note: alpine already exists
+		// Download the ubuntu image
+		disk := testDisks["ubuntu"]
+		// Create directory
+		_, err := freeboxClient.CreateDirectory(ctx, root, disk.directory)
+		Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
+		// Check that the image exists and if so, do an early return
+		_, err = freeboxClient.GetFileInfo(ctx, disk.filepath)
+		if err == nil {
+			return
+		}
+		if err != nil && err == client.ErrPathNotFound {
+			// If not, then pre-download the image
+			taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
+				DownloadURLs:      []string{disk.source},
+				Hash:              disk.digest,
+				DownloadDirectory: root + "/" + disk.directory,
+				Filename:          disk.filename,
+			})
+			Expect(err).To(BeNil())
+			// Wait for download task to be done
+			Eventually(func() types.DownloadTask {
+				downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
 				Expect(err).To(BeNil())
-				// Wait for download task to be done
-				Eventually(func() types.DownloadTask {
-					downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
-					Expect(err).To(BeNil())
-					return downloadTask
-				}, "5m").Should(MatchFields(IgnoreExtras, Fields{
-					"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
-				}))
-			} else {
-				Expect(err).To(BeNil())
-			}
+				return downloadTask
+			}, "5m").Should(MatchFields(IgnoreExtras, Fields{
+				"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
+			}))
+		} else {
+			Expect(err).To(BeNil())
 		}
 	})
 	Context("create and delete (CD)", func() {
-		It("should create, start, stop and delete a virtual machine", func() {
+		It("should create, start, stop and delete a virtual machine", func(ctx SpecContext) {
 			splitName := strings.Split(("test-CD-" + uuid.New().String())[:30], "-")
 			name := strings.Join(splitName[:len(splitName)-1], "-")
 			resource.UnitTest(GinkgoT(), resource.TestCase{
@@ -143,7 +125,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 			},
 			"ssh_pwauth":true
 		}`, "\n", "")
-		It("should create, start, stop, update, start again, stop again and finally delete a virtual machine", func() {
+		It("should create, start, stop, update, start again, stop again and finally delete a virtual machine", func(ctx SpecContext) {
 			splitName := strings.Split(("test-CUD-" + uuid.New().String())[:30], "-")
 			name := strings.Join(splitName[:len(splitName)-1], "-")
 			resource.UnitTest(GinkgoT(), resource.TestCase{
@@ -205,7 +187,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 			virtualMachineID = new(int64)
 			name             = new(string)
 		)
-		BeforeEach(func() {
+		BeforeEach(func(ctx SpecContext) {
 			splitName := strings.Split(("test-ID-" + uuid.New().String())[:30], "-")
 			*name = strings.Join(splitName[:len(splitName)-1], "-")
 			vm := Must(freeboxClient.CreateVirtualMachine(ctx, types.VirtualMachinePayload{
