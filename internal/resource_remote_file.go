@@ -17,6 +17,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/nikolalohinski/free-go/client"
@@ -77,8 +78,12 @@ type remoteFileModelCredentialsBasicAuthModel struct {
 	Password types.String `tfsdk:"password"`
 }
 
-func (v *remoteFileModel) populateFromFileInfo(fileInfo freeboxTypes.FileInfo) {
+func (v *remoteFileModel) populateDestinationFromFileInfo(fileInfo freeboxTypes.FileInfo) {
 	v.DestinationPath = basetypes.NewStringValue(string(fileInfo.Path))
+}
+
+func (v *remoteFileModel) populateSourceFromFileInfo(fileInfo freeboxTypes.FileInfo) {
+	v.SourcePath = basetypes.NewStringValue(string(fileInfo.Path))
 }
 
 func (v *remoteFileModel) populateFromDownloadTask(downloadTask freeboxTypes.DownloadTask) {
@@ -86,9 +91,9 @@ func (v *remoteFileModel) populateFromDownloadTask(downloadTask freeboxTypes.Dow
 	v.DestinationPath = basetypes.NewStringValue(go_path.Join(string(downloadTask.DownloadDirectory), downloadTask.Name))
 
 	// Do we really want to get the checksum from the download task?
-	//if v.Checksum.IsUnknown() && downloadTask.InfoHash != "" {
-	//	v.Checksum = basetypes.NewStringValue(downloadTask.InfoHash)
-	//}
+	if v.Checksum.IsUnknown() && downloadTask.InfoHash != "" {
+		v.Checksum = basetypes.NewStringValue(downloadTask.InfoHash)
+	}
 
 	// TODO: Implement credentials
 }
@@ -124,21 +129,22 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 		Attributes: map[string]schema.Attribute{
 			"destination_path": schema.StringAttribute{
 				MarkdownDescription: "Path to the file on the Freebox",
-				Required: 		  true,
+				Required: 		     true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"source_url": schema.StringAttribute{
 				MarkdownDescription: "VM ethernet interface MAC address",
-				Required: 		  true,
+				Optional: 		     true,
 				Validators: []validator.String{
 					&sourceURLValidator{},
 				},
 			},
 			"checksum": schema.StringAttribute{
 				MarkdownDescription: "Checksum to verify the hash of the downloaded file",
-				Optional:           true,
+				Optional:            true,
+				Computed:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
@@ -165,7 +171,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"task_id": schema.Int64Attribute{
-				Optional: true,
+				Optional:           true,
 				Computed:           true,
 				MarkdownDescription: "Task identifier",
 				//PlanModifiers: []planmodifier.Int64{
@@ -202,48 +208,70 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	taskID, err := v.client.AddDownloadTask(ctx, model.toDownloadPayload())
+	resp.Diagnostics.Append(v.createFromURL(ctx, &model, resp.State)...)
+
+	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError(
+			"Failed to get file",
+			err.Error(),
+		)
+		return
+	} else {
+		model.populateDestinationFromFileInfo(fileInfo)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+	}
+
+	checksum := model.Checksum.ValueString()
+	if checksum == "" {
+		checksum, err = fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256))
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to read hash",
+				err.Error(),
+			)
+			return
+		} else {
+			model.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+		}
+	}
+
+	resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, model.DestinationPath.ValueString(), checksum)...)
+}
+
+func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFileModel, state tfsdk.State) (diagnostics diag.Diagnostics) {
+	taskID, err := v.client.AddDownloadTask(ctx, model.toDownloadPayload())
+	if err != nil {
+		diagnostics.AddError(
 			"Failed to add download task",
 			err.Error(),
 		)
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("task_id"), taskID)...)
+	diagnostics.Append(state.SetAttribute(ctx, path.Root("task_id"), taskID)...)
 
 	downloadTask, err := v.client.GetDownloadTask(ctx, taskID)
 	if err != nil {
-		resp.Diagnostics.AddError(
+		diagnostics.AddError(
 			"Failed to get download task",
 			err.Error(),
 		)
 	} else {
 		model.populateFromDownloadTask(downloadTask)
-		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+		diagnostics.Append(state.Set(ctx, &model)...)
 	}
 
 	if err := waitForDownloadTask(ctx, v.client, taskID); err != nil {
-		resp.Diagnostics.AddError(
+		diagnostics.AddError(
 			"Failed to wait for download task",
 			err.Error(),
 		)
 		return
 	}
 
-	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to get file information",
-			err.Error(),
-		)
-	} else {
-		model.populateFromFileInfo(fileInfo)
-		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
-	}
-
-	resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, model.DestinationPath.ValueString(), model.Checksum.ValueString())...)
+	return
 }
 
 func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -267,11 +295,47 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 		}
 	}
 
-	model.populateFromFileInfo(fileInfo)
+	if model.TaskID.IsNull() {
+		tasks, err := v.client.ListDownloadTasks(ctx)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to list download tasks",
+				err.Error(),
+			)
+			return
+		}
 
-	// TODO: read the file checksum and populate the model
+		destinationPath := model.DestinationPath.ValueString()
+		name := go_path.Base(destinationPath)
+		directory := go_path.Dir(destinationPath)
 
+		var timestamp time.Time
+
+		for _, task := range tasks {
+			if string(task.DownloadDirectory) == directory && task.Name == name && task.CreatedTimestamp.After(timestamp) {
+				model.populateFromDownloadTask(task)
+				resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+				break
+			}
+		}
+	}
+
+	model.populateDestinationFromFileInfo(fileInfo)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+
+	hMethod, _ := hashSpec(model.Checksum.ValueString())
+
+	hash, err := fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), hMethod)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to read hash",
+			err.Error(),
+		)
+		return
+	} else {
+		model.setChecksum(hMethod, hash)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+	}
 }
 
 func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -284,18 +348,16 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 	}
 
 	if err := stopAndDeleteDownloadTask(ctx, v.client, oldModel.TaskID.ValueInt64()); err != nil {
-		resp.Diagnostics.AddError(
+		resp.Diagnostics.AddWarning(
 			"Failed to delete download task and its files",
 			err.Error(),
 		)
-
-		return
 	}
 
-	if err := deleteFilesIfExist(ctx, v.client, []string{
+	if err := deleteFilesIfExist(ctx, v.client,
 		oldModel.DestinationPath.ValueString(),
 		newModel.DestinationPath.ValueString(),
-	}); err != nil {
+	); err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to delete file(s)",
 			err.Error(),
@@ -341,11 +403,10 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 			"Failed to delete download task and its files",
 			err.Error(),
 		)
-
 		return
 	}
 
-	if err := deleteFilesIfExist(ctx, v.client, []string{model.DestinationPath.ValueString()}); err != nil {
+	if err := deleteFilesIfExist(ctx, v.client, model.DestinationPath.ValueString()); err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to delete file",
 			err.Error(),
@@ -379,7 +440,24 @@ func (v *remoteFileResource) ImportState(ctx context.Context, req resource.Impor
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
 
+func hashSpec(checksum string) (string, string) {
+	parts := strings.SplitN(checksum, ":", 2)
+	if len(parts) == 1 {
+		parts = []string{string(freeboxTypes.HashTypeSHA256), parts[0]}
+	} else if parts[0] == "" {
+		parts[0] = string(freeboxTypes.HashTypeSHA256)
+	}
+
+	return parts[0], parts[1]
+}
+
+func (v *remoteFileModel) setChecksum(method, value string) {
+	v.Checksum = basetypes.NewStringValue(fmt.Sprintf("%s:%s", method, value))
+}
+
 func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) (error) {
+	errs := make([]error, 0, 2)
+
 	if err := c.UpdateDownloadTask(ctx, taskID, freeboxTypes.DownloadTaskUpdate{
 		Status: freeboxTypes.DownloadTaskStatusStopped,
 	}); err != nil {
@@ -387,7 +465,7 @@ func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int6
 			return nil
 		}
 
-		return fmt.Errorf("stop download task: %w", err)
+		errs = append(errs, fmt.Errorf("stop download task: %w", err))
 	}
 
 	if err := c.EraseDownloadTask(ctx, taskID); err != nil {
@@ -395,13 +473,13 @@ func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int6
 			return nil
 		}
 
-		return fmt.Errorf("erase download task: %w", err)
+		errs = append(errs, fmt.Errorf("erase download task: %w", err))
 	}
 
-	return nil
+	return errors.Join(errs...)
 }
 
-func deleteFilesIfExist(ctx context.Context, c client.Client, paths []string) (error) {
+func deleteFilesIfExist(ctx context.Context, c client.Client, paths ...string) (error) {
 	filesToDelete := make([]string, 0, len(paths))
 
 	var errs []error
@@ -420,6 +498,10 @@ func deleteFilesIfExist(ctx context.Context, c client.Client, paths []string) (e
 
 	if len(errs) > 0 {
 		return errors.Join(errs...)
+	}
+
+	if len(filesToDelete) == 0 {
+		return nil
 	}
 
 	task, err := c.RemoveFiles(ctx, filesToDelete)
@@ -441,11 +523,52 @@ func deleteFilesIfExist(ctx context.Context, c client.Client, paths []string) (e
 
 // verifyFileChecksum verifies the checksum of the file.
 func verifyFileChecksum(ctx context.Context, client client.Client, path string, checksum string) (diagnostics diag.Diagnostics) {
-	// TODO: Implement
+	hMethod, hValue := hashSpec(checksum)
 
-	diagnostics.AddWarning("Not implemented", "Checksum verification is not implemented")
+	hash, err := fileChecksum(ctx, client, path, hMethod)
+	if err != nil {
+		diagnostics.AddError(
+			"Failed to read hash",
+			err.Error(),
+		)
+		return
+	}
+
+	if hash != hValue {
+		diagnostics.AddError(
+			"Checksum mismatch",
+			fmt.Sprintf("Expected %q, got %q", checksum, hash),
+		)
+	}
 
 	return
+}
+
+// fileChecksum verifies the checksum of the file.
+func fileChecksum(ctx context.Context, client client.Client, path string, hashType string) (string, error) {
+	if hashType == "" {
+		hashType = string(freeboxTypes.HashTypeSHA256)
+	}
+
+	task, err := client.HashFileTask(ctx, freeboxTypes.HashPayload{
+		HashType: freeboxTypes.HashType(hashType),
+		Path:     freeboxTypes.Base64Path(path),
+	})
+
+	if err != nil {
+		return "", fmt.Errorf("hash file task: %w", err)
+	}
+
+	if err := waitForFileSystemTask(ctx, client, task.ID); err != nil {
+		return "", fmt.Errorf("wait for file system task: %w", err)
+	}
+
+	hash, err := client.GetHashResult(ctx, task.ID)
+	if err != nil {
+		return "", fmt.Errorf("get hash result: %w", err)
+	}
+
+	return hash, nil
 }
 
 type taskError struct {
@@ -504,7 +627,7 @@ func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64) (er
 
 		switch task.Status {
 		case freeboxTypes.DownloadTaskStatusError:
-			return &taskError{taskID: taskID, errorCode: task.Error}
+			return &taskError{taskID: taskID, errorCode: string(task.Error)}
 		case freeboxTypes.DownloadTaskStatusDone:
 			return nil // Done
 		case freeboxTypes.DownloadTaskStatusStopped:
@@ -525,10 +648,6 @@ type errStoppedTask int64
 
 func (e errStoppedTask) Error() string {
 	return fmt.Sprintf("task %d is on pause, please resume it", int64(e))
-}
-
-func validateCheckSum(ctx context.Context) {
-
 }
 
 type sourceURLValidator struct {}
