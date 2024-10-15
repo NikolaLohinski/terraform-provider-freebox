@@ -82,10 +82,6 @@ func (v *remoteFileModel) populateDestinationFromFileInfo(fileInfo freeboxTypes.
 	v.DestinationPath = basetypes.NewStringValue(string(fileInfo.Path))
 }
 
-func (v *remoteFileModel) populateSourceFromFileInfo(fileInfo freeboxTypes.FileInfo) {
-	v.SourcePath = basetypes.NewStringValue(string(fileInfo.Path))
-}
-
 func (v *remoteFileModel) populateFromDownloadTask(downloadTask freeboxTypes.DownloadTask) {
 	v.TaskID = basetypes.NewInt64Value(downloadTask.ID)
 	v.DestinationPath = basetypes.NewStringValue(go_path.Join(string(downloadTask.DownloadDirectory), downloadTask.Name))
@@ -588,7 +584,7 @@ func fileChecksum(ctx context.Context, client client.Client, path string, hashTy
 		hashType = string(freeboxTypes.HashTypeSHA256)
 	}
 
-	task, err := client.HashFileTask(ctx, freeboxTypes.HashPayload{
+	task, err := client.AddHashFileTask(ctx, freeboxTypes.HashPayload{
 		HashType: freeboxTypes.HashType(hashType),
 		Path:     freeboxTypes.Base64Path(path),
 	})
