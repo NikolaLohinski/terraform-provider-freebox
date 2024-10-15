@@ -296,28 +296,13 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 	}
 
 	if model.TaskID.IsNull() {
-		tasks, err := v.client.ListDownloadTasks(ctx)
+		task, err := v.findTaskByPath(ctx, model.DestinationPath.ValueString())
 		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to list download tasks",
-				err.Error(),
-			)
 			return
 		}
 
-		destinationPath := model.DestinationPath.ValueString()
-		name := go_path.Base(destinationPath)
-		directory := go_path.Dir(destinationPath)
-
-		var timestamp time.Time
-
-		for _, task := range tasks {
-			if string(task.DownloadDirectory) == directory && task.Name == name && task.CreatedTimestamp.After(timestamp) {
-				model.populateFromDownloadTask(task)
-				resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
-				break
-			}
-		}
+		model.populateFromDownloadTask(task)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}
 
 	model.populateDestinationFromFileInfo(fileInfo)
@@ -336,6 +321,30 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 		model.setChecksum(hMethod, hash)
 		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}
+}
+
+func (v *remoteFileResource) findTaskByPath(ctx context.Context, destinationPath string) (freeboxTypes.DownloadTask, error) {
+	tasks, err := v.client.ListDownloadTasks(ctx)
+	if err != nil {
+		return freeboxTypes.DownloadTask{}, fmt.Errorf("list download tasks: %w", err)
+	}
+
+	name := go_path.Base(destinationPath)
+	directory := go_path.Dir(destinationPath)
+
+	var task freeboxTypes.DownloadTask
+
+	for _, t := range tasks {
+		if string(t.DownloadDirectory) == directory && t.Name == name && t.CreatedTimestamp.After(task.CreatedTimestamp.Time) {
+			task = t
+		}
+	}
+
+	if task.ID == 0 {
+		return freeboxTypes.DownloadTask{}, &taskError{taskID: 0, errorCode: string(freeboxTypes.DownloadTaskErrorNotFound)}
+	}
+
+	return task, nil
 }
 
 func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -418,10 +427,8 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 func (v *remoteFileResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	id, err := strconv.Atoi(req.ID)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Unexpected import identifier",
-			fmt.Sprintf("Expected the import identifier with to be an int64 but got: %s", req.ID),
-		)
+		v.importStateFromPath(ctx, req, resp)
+		return
 	}
 
 	task, err := v.client.GetDownloadTask(ctx, int64(id))
@@ -434,6 +441,37 @@ func (v *remoteFileResource) ImportState(ctx context.Context, req resource.Impor
 	}
 
 	var model remoteFileModel
+
+	model.populateFromDownloadTask(task)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+}
+
+func (v *remoteFileResource) importStateFromPath(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	path := req.ID
+
+	fileInfo, err := v.client.GetFileInfo(ctx, path)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to get file",
+			err.Error(),
+		)
+		return
+	}
+
+	var model remoteFileModel
+	model.populateDestinationFromFileInfo(fileInfo)
+
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+
+	task, err := v.findTaskByPath(ctx, path)
+	if err != nil {
+		resp.Diagnostics.AddError(
+			"Failed to find download task",
+			err.Error(),
+		)
+		return
+	}
 
 	model.populateFromDownloadTask(task)
 

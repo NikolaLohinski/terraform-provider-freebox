@@ -273,43 +273,87 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			}))
 		})
 
-		It("should import and then delete a remote file", func(ctx SpecContext) {
-			resource.UnitTest(GinkgoT(), resource.TestCase{
-				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-				Steps: []resource.TestStep{
-					{
-						Config: providerBlock + `
-							resource "freebox_remote_file" "` + resourceName + `" {
-								source_url = "` + exampleFile.source + `"
-								destination_path = "` + exampleFile.filepath + `"
-								checksum = "` + exampleFile.digest + `"
-							}
-						`,
-						ResourceName:       "freebox_remote_file." + resourceName,
-						ImportState:        true,
-						ImportStateId:      strconv.Itoa(int(remoteFileTaskID)),
-						ImportStatePersist: true,
-						Check: resource.ComposeAggregateTestCheckFunc(
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "task_id", strconv.Itoa(int(remoteFileTaskID))),
-						),
-						Destroy: true,
+		Describe("import and delete with task ID", func() {
+			It("should import and then delete a remote file", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: providerBlock + `
+								resource "freebox_remote_file" "` + resourceName + `" {
+									source_url = "` + exampleFile.source + `"
+									destination_path = "` + exampleFile.filepath + `"
+									checksum = "` + exampleFile.digest + `"
+								}
+							`,
+							ResourceName:       "freebox_remote_file." + resourceName,
+							ImportState:        true,
+							ImportStateId:      strconv.Itoa(int(remoteFileTaskID)),
+							ImportStatePersist: true,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "task_id", strconv.Itoa(int(remoteFileTaskID))),
+							),
+							Destroy: true,
+						},
 					},
-				},
-				CheckDestroy: func(s *terraform.State) error {
-					identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
-					Expect(err).To(BeNil())
-					Expect(identifier).ToNot(BeZero())
+					CheckDestroy: func(s *terraform.State) error {
+						identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+						Expect(err).To(BeNil())
+						Expect(identifier).ToNot(BeZero())
 
-					_, err = freeboxClient.GetDownloadTask(ctx, int64(identifier))
-					Expect(err).To(MatchError(client.ErrTaskNotFound))
+						_, err = freeboxClient.GetDownloadTask(ctx, int64(identifier))
+						Expect(err).To(MatchError(client.ErrTaskNotFound))
 
-					_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
-					Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
-					return nil
-				},
+						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+						return nil
+					},
+				})
+			})
+		})
+
+		Describe("import and delete with path", func() {
+			It("should import and then delete a remote file", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: providerBlock + `
+								resource "freebox_remote_file" "` + resourceName + `" {
+									source_url = "` + exampleFile.source + `"
+									destination_path = "` + exampleFile.filepath + `"
+									checksum = "` + exampleFile.digest + `"
+								}
+							`,
+							ResourceName:       "freebox_remote_file." + resourceName,
+							ImportState:        true,
+							ImportStateId:      exampleFile.filepath,
+							ImportStatePersist: true,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "task_id", strconv.Itoa(int(remoteFileTaskID))),
+							),
+							Destroy: true,
+						},
+					},
+					CheckDestroy: func(s *terraform.State) error {
+						identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+						Expect(err).To(BeNil())
+						Expect(identifier).ToNot(BeZero())
+
+						_, err = freeboxClient.GetDownloadTask(ctx, int64(identifier))
+						Expect(err).To(MatchError(client.ErrTaskNotFound))
+
+						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+						return nil
+					},
+				})
 			})
 		})
 	})
