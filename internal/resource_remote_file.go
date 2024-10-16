@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -37,16 +38,6 @@ func NewRemoteFileResource() resource.Resource {
 type remoteFileResource struct {
 	client client.Client
 }
-
-//go:generate stringer -type=fileType -linecomment
-type fileType uint8
-
-const (
-	// fileTypeDir represents a directory.
-	fileTypeDir fileType = iota // dir
-	// fileTypeFile represents a file.
-	fileTypeFile // file
-)
 
 // remoteFileModel describes the resource data model.
 type remoteFileModel struct {
@@ -91,7 +82,9 @@ func (v *remoteFileModel) populateFromDownloadTask(downloadTask freeboxTypes.Dow
 		v.Checksum = basetypes.NewStringValue(downloadTask.InfoHash)
 	}
 
-	// TODO: Implement credentials
+	// Credentials are not returned by the API
+	// Source URL is not returned by the API
+
 }
 
 func (v *remoteFileModel) toDownloadPayload() (payload freeboxTypes.DownloadRequest) {
@@ -170,9 +163,9 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Optional:           true,
 				Computed:           true,
 				MarkdownDescription: "Task identifier",
-				//PlanModifiers: []planmodifier.Int64{
-					// int64planmodifier.UseStateForUnknown(),
-				//},
+				Validators: []validator.Int64{
+					int64validator.AtLeast(0),
+				},
 			},
 		},
 	}
@@ -233,9 +226,9 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 			model.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
 			resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 		}
+	} else {
+		resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, model.DestinationPath.ValueString(), checksum)...)
 	}
-
-	resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, model.DestinationPath.ValueString(), checksum)...)
 }
 
 func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFileModel, state tfsdk.State) (diagnostics diag.Diagnostics) {
@@ -368,8 +361,8 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("task_id"), taskID)...)
 	newModel.TaskID = basetypes.NewInt64Value(taskID)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 
 	if err := waitForDownloadTask(ctx, v.client, taskID); err != nil {
 		resp.Diagnostics.AddError("Failed to wait for download task", err.Error())
@@ -377,7 +370,22 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 
-	resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), newModel.Checksum.ValueString())...)
+	checksum := newModel.Checksum.ValueString()
+	if checksum == "" {
+		checksum, err = fileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256))
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to read hash",
+				err.Error(),
+			)
+			return
+		} else {
+			newModel.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
+			resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
+		}
+	} else {
+		resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), newModel.Checksum.ValueString())...)
+	}
 }
 
 func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
