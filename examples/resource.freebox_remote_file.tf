@@ -5,5 +5,5 @@ resource "freebox_remote_file" "example" {
 }
 
 output "task_id" {
-  value = one(resource.freebox_remote_file.example.task_id)
+  value = resource.freebox_remote_file.example.task_id
 }

@@ -12,7 +12,7 @@ resource "freebox_remote_file" "example" {
 }
 
 output "task_id" {
-  value = one(resource.freebox_remote_file.example.task_id)
+  value = resource.freebox_remote_file.example.task_id
 }
 ```
 
@@ -50,4 +50,7 @@ Optional:
 ```sh
 # -------------------------------------------- 👇 is the ID of the task
 terraform import "freebox_remote_file.example" 42
+
+# -------------------------------------------- 👇 is the path on the freebox disk
+terraform import "freebox_remote_file.example" the-disk/path/to/the/file.txt
 ```
