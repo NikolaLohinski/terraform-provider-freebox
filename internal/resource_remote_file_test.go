@@ -3,6 +3,7 @@ package internal_test
 import (
 	"fmt"
 	"path"
+	"regexp"
 	"strconv"
 
 	"github.com/nikolalohinski/free-go/client"
@@ -158,6 +159,26 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 				})
 			})
 		})
+
+		Context("when the file already exists", func() {
+			It("should fail", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: providerBlock + `
+								resource "freebox_remote_file" "` + resourceName + `" {
+									source_url = "` + existingDisk.source + `"
+									destination_path = "` + existingDisk.filepath + `"
+									checksum = "` + existingDisk.digest + `"
+								}
+							`,
+							ExpectError: regexp.MustCompile(`File already exists`),
+						},
+					},
+				})
+			})
+		})
 	})
 
 	Context("create, update and delete (CUD)", func() {
@@ -246,6 +267,93 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 
 					return nil
 				},
+			})
+		})
+		Context("when only the task changed", func() {
+			It("should update the resource", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: providerBlock + `
+								resource "freebox_remote_file" "` + resourceName + `" {
+									source_url = "` + exampleFile.source + `"
+									destination_path = "` + exampleFile.filepath + `"
+									checksum = "` + exampleFile.digest + `"
+								}
+							`,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+								func(s *terraform.State) error {
+									identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+									Expect(err).To(BeNil())
+									task, err := freeboxClient.GetDownloadTask(ctx, int64(identifier))
+									Expect(err).To(BeNil())
+									Expect(task.Name).To(Equal(exampleFile.filename))
+									Expect(task.Status).To(BeEquivalentTo(types.DownloadTaskStatusDone))
+
+									fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+									Expect(err).To(BeNil())
+									Expect(fileInfo.Name).To(Equal(exampleFile.filename))
+									Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+									return nil
+								},
+							),
+						},
+						{
+							Config: providerBlock + `
+								resource "freebox_remote_file" "` + resourceName + `" {
+									source_url = "` + exampleFile.source + `"
+									destination_path = "` + exampleFile.filepath + `"
+									checksum = "` + exampleFile.digest + `"
+									task_id = null
+								}
+							`,
+							ConfigPlanChecks: resource.ConfigPlanChecks{
+								PreApply: []plancheck.PlanCheck{
+									plancheck.ExpectEmptyPlan(),
+								},
+							},
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+								func(s *terraform.State) error {
+									identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+									Expect(err).To(BeNil())
+									task, err := freeboxClient.GetDownloadTask(ctx, int64(identifier))
+									Expect(err).To(BeNil())
+									Expect(task.Name).To(Equal(exampleFile.filename))
+									Expect(task.Status).To(BeEquivalentTo(types.DownloadTaskStatusDone))
+
+									fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+									Expect(err).To(BeNil())
+									Expect(fileInfo.Name).To(Equal(exampleFile.filename))
+									Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+									return nil
+								},
+							),
+						},
+					},
+					CheckDestroy: func(s *terraform.State) error {
+						identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+						Expect(err).To(BeNil())
+						Expect(identifier).ToNot(BeZero())
+
+						_, err = freeboxClient.GetDownloadTask(ctx, int64(identifier))
+						Expect(err).To(MatchError(client.ErrTaskNotFound))
+
+						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+
+						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath + ".new")
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath+".new")
+
+						return nil
+					},
+				})
 			})
 		})
 	})

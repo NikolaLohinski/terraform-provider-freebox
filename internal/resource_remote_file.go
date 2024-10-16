@@ -204,14 +204,19 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
+	if _, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString()); err == nil {
+		resp.Diagnostics.AddError("File already exists", "Please delete the file or import it into the state")
+		return
+	} else if !errors.Is(err, client.ErrPathNotFound) {
+		resp.Diagnostics.AddError("Failed to get file", err.Error())
+		return
+	}
+
 	resp.Diagnostics.Append(v.createFromURL(ctx, &model, resp.State)...)
 
 	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to get file",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to get file", err.Error())
 		return
 	} else {
 		model.populateDestinationFromFileInfo(fileInfo)
@@ -222,10 +227,7 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 	if checksum == "" {
 		checksum, err = fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256))
 		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to read hash",
-				err.Error(),
-			)
+			resp.Diagnostics.AddError("Failed to read hash", err.Error())
 			return
 		} else {
 			model.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
@@ -239,10 +241,7 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFileModel, state tfsdk.State) (diagnostics diag.Diagnostics) {
 	taskID, err := v.client.AddDownloadTask(ctx, model.toDownloadPayload())
 	if err != nil {
-		diagnostics.AddError(
-			"Failed to add download task",
-			err.Error(),
-		)
+		diagnostics.AddError("Failed to add download task", err.Error())
 		return
 	}
 
@@ -250,20 +249,14 @@ func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFil
 
 	downloadTask, err := v.client.GetDownloadTask(ctx, taskID)
 	if err != nil {
-		diagnostics.AddError(
-			"Failed to get download task",
-			err.Error(),
-		)
+		diagnostics.AddError("Failed to get download task", err.Error())
 	} else {
 		model.populateFromDownloadTask(downloadTask)
 		diagnostics.Append(state.Set(ctx, &model)...)
 	}
 
 	if err := waitForDownloadTask(ctx, v.client, taskID); err != nil {
-		diagnostics.AddError(
-			"Failed to wait for download task",
-			err.Error(),
-		)
+		diagnostics.AddError("Failed to wait for download task", err.Error())
 		return
 	}
 
@@ -283,10 +276,7 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 	if err != nil {
 		// File does not exist yet, wait for download task to complete
 		if err := waitForDownloadTask(ctx,v.client, model.TaskID.ValueInt64()); err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to wait for download task",
-				err.Error(),
-			)
+			resp.Diagnostics.AddError("Failed to wait for download task", err.Error())
 			return
 		}
 	}
@@ -308,10 +298,7 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	hash, err := fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), hMethod)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to read hash",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to read hash", err.Error())
 		return
 	} else {
 		model.setChecksum(hMethod, hash)
@@ -348,34 +335,36 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 
 	resp.Diagnostics.Append(req.State.Get(ctx, &oldModel)...)
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &newModel)...)
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if err := stopAndDeleteDownloadTask(ctx, v.client, oldModel.TaskID.ValueInt64()); err != nil {
-		resp.Diagnostics.AddWarning(
-			"Failed to delete download task and its files",
-			err.Error(),
-		)
+	if oldModel.SourceURL.ValueString() != newModel.SourceURL.ValueString() {
+		if _, err := v.client.GetFileInfo(ctx, newModel.DestinationPath.ValueString()); err == nil {
+			resp.Diagnostics.AddError("File already exists", "Please delete the file or import it into the state")
+			return
+		} else if !errors.Is(err, client.ErrPathNotFound) {
+			resp.Diagnostics.AddError("Failed to get file", err.Error())
+			return
+		}
 	}
 
-	if err := deleteFilesIfExist(ctx, v.client,
-		oldModel.DestinationPath.ValueString(),
-		newModel.DestinationPath.ValueString(),
-	); err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to delete file(s)",
-			err.Error(),
-		)
+	if err := stopAndDeleteDownloadTask(ctx, v.client, oldModel.TaskID.ValueInt64()); err != nil {
+		resp.Diagnostics.AddError("Failed to stop and delete download task", err.Error())
+	}
+
+	if err := deleteFilesIfExist(ctx, v.client, oldModel.DestinationPath.ValueString()); err != nil {
+		resp.Diagnostics.AddError("Failed to delete file(s)", err.Error())
+	}
+
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
 	taskID, err := v.client.AddDownloadTask(ctx, newModel.toDownloadPayload())
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to add download task",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to add download task", err.Error())
 		return
 	}
 
@@ -383,10 +372,7 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 	newModel.TaskID = basetypes.NewInt64Value(taskID)
 
 	if err := waitForDownloadTask(ctx, v.client, taskID); err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to wait for download task",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to wait for download task", err.Error())
 	}
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
@@ -404,18 +390,12 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 	}
 
 	if err := stopAndDeleteDownloadTask(ctx, v.client, model.TaskID.ValueInt64()); err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to delete download task and its files",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to stop and delete download task", err.Error())
 		return
 	}
 
 	if err := deleteFilesIfExist(ctx, v.client, model.DestinationPath.ValueString()); err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to delete file",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to delete file", err.Error())
 		return
 	}
 }
@@ -429,10 +409,7 @@ func (v *remoteFileResource) ImportState(ctx context.Context, req resource.Impor
 
 	task, err := v.client.GetDownloadTask(ctx, int64(id))
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to get download task",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to get download task", err.Error())
 		return
 	}
 
@@ -448,10 +425,7 @@ func (v *remoteFileResource) importStateFromPath(ctx context.Context, req resour
 
 	fileInfo, err := v.client.GetFileInfo(ctx, path)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to get file",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to get file", err.Error())
 		return
 	}
 
@@ -462,10 +436,7 @@ func (v *remoteFileResource) importStateFromPath(ctx context.Context, req resour
 
 	task, err := v.findTaskByPath(ctx, path)
 	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to find download task",
-			err.Error(),
-		)
+		resp.Diagnostics.AddError("Failed to find download task", err.Error())
 		return
 	}
 
@@ -561,18 +532,12 @@ func verifyFileChecksum(ctx context.Context, client client.Client, path string, 
 
 	hash, err := fileChecksum(ctx, client, path, hMethod)
 	if err != nil {
-		diagnostics.AddError(
-			"Failed to read hash",
-			err.Error(),
-		)
+		diagnostics.AddError("Failed to read hash", err.Error())
 		return
 	}
 
 	if hash != hValue {
-		diagnostics.AddError(
-			"Checksum mismatch",
-			fmt.Sprintf("Expected %q, got %q", checksum, hash),
-		)
+		diagnostics.AddError("Checksum mismatch", fmt.Sprintf("Expected %q, got %q", checksum, hash))
 	}
 
 	return
