@@ -1,6 +1,6 @@
 # `freebox_remote_file` (Resource)
 
-Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details
+The resource downloads a file from a URL and stores it on the Freebox.
 
 ## Example
 

@@ -114,7 +114,7 @@ func (v *remoteFileResource) Metadata(ctx context.Context, req resource.Metadata
 
 func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
+		MarkdownDescription: "The resource downloads a file from a URL and stores it on the Freebox.",
 		Attributes: map[string]schema.Attribute{
 			"destination_path": schema.StringAttribute{
 				MarkdownDescription: "Path to the file on the Freebox",
