@@ -132,7 +132,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 			},
 			"source_url": schema.StringAttribute{
 				MarkdownDescription: "VM ethernet interface MAC address",
-				Optional: 		     true,
+				Required: 		     true,
 				Validators: []validator.String{
 					&sourceURLValidator{},
 				},
