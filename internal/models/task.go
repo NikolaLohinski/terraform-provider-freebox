@@ -53,6 +53,7 @@ func TaskTypeValidator() validator.String {
 	return stringvalidator.OneOf(
 		string(TaskTypeDownload),
 		string(TaskTypeFileSystem),
+		string(TaskTypeVirtualDisk),
 	)
 }
 
@@ -61,4 +62,5 @@ type TaskType string
 const (
 	TaskTypeDownload    TaskType = "download"
 	TaskTypeFileSystem  TaskType = "file_system"
+	TaskTypeVirtualDisk TaskType = "virtual_disk"
 )

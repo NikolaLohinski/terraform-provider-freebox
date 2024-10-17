@@ -45,6 +45,18 @@ func stopAndDeleteFileSystemTask(ctx context.Context, c client.Client, taskID in
 	return errors.Join(errs...)
 }
 
+func stopAndDeleteVirtualDiskTask(ctx context.Context, c client.Client, taskID int64) error {
+	if err := c.DeleteVirtualDiskTask(ctx, taskID); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("delete virtual disk task: %w", err)
+	}
+
+	return nil
+}
+
 func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) error {
 	errs := make([]error, 0, 2)
 
@@ -200,6 +212,50 @@ func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int
 	}
 }
 
+func waitForDiskTask(ctx context.Context, c client.Client, taskID int64) (diagnostics diag.Diagnostics) {
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeFileSystem)
+
+	tflog.Debug(ctx, "Waiting for disk task to complete...")
+
+	events, err := c.ListenEvents(ctx, []freeboxTypes.EventDescription{{
+		Source: freeboxTypes.EventSourceVMDisk,
+		Name:   freeboxTypes.EventDiskTaskDone,
+	}})
+	if err != nil {
+		diagnostics.AddError("Failed to listen for events", fmt.Sprintf("Error: %s", err.Error()))
+		return
+	}
+
+	task, err := c.GetVirtualDiskTask(ctx, taskID)
+	if err != nil {
+		diagnostics.AddError("Failed to get virtual disk task", fmt.Sprintf("Task: %d, Error: %s", taskID, err.Error()))
+		return
+	}
+
+	if task.Done {
+		if task.Error {
+			diagnostics.AddError("Disk task failed", fmt.Sprintf("Task: %d", taskID))
+		}
+		return
+	}
+
+	for {
+		select {
+		case event := <-events:
+			if !event.Notification.Success {
+				diagnostics.AddError("Disk task failed", fmt.Sprintf("Task: %d, Error: %v", taskID, event.Error))
+				return
+			}
+
+			return nil // Done
+		case <-ctx.Done():
+			diagnostics.AddError("Disk task did not complete in time", ctx.Err().Error())
+			return
+		}
+	}
+}
+
 // waitForDownloadTask waits for the download task to complete.
 func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, polling models.Polling) (diagnostics diag.Diagnostics) {
 	ctx = tflog.SetField(ctx, "task.id", taskID)
@@ -268,6 +324,8 @@ func stopAndDeleteTask(ctx context.Context, c client.Client, taskType models.Tas
 		return stopAndDeleteFileSystemTask(ctx, c, taskID)
 	case models.TaskTypeDownload:
 		return stopAndDeleteDownloadTask(ctx, c, taskID)
+	case models.TaskTypeVirtualDisk:
+		return stopAndDeleteVirtualDiskTask(ctx, c, taskID)
 	default:
 		return fmt.Errorf("unknown task type: %s", taskType)
 	}
@@ -279,6 +337,8 @@ func WaitForTask(ctx context.Context, c client.Client, taskType models.TaskType,
 		return waitForFileSystemTask(ctx, c, taskID, *polling)
 	case models.TaskTypeDownload:
 		return waitForDownloadTask(ctx, c, taskID, *polling)
+	case models.TaskTypeVirtualDisk:
+		return waitForDiskTask(ctx, c, taskID)
 	default:
 		diagnostics.AddError("Unknown task type", fmt.Sprintf("Task: %d, Type: %s", taskID, taskType))
 	}
