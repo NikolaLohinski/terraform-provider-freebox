@@ -9,9 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -20,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -57,10 +54,10 @@ type remoteFileModel struct {
 	// Authentication is the credentials to use for the operation.
 	Authentication types.Object `tfsdk:"authentication"`
 
-	// taskID is the task identifier.
+	// TaskID is the task identifier.
 	TaskID types.Int64 `tfsdk:"task_id"`
 
-	// polling is the polling configuration.
+	// Polling is the polling configuration.
 	Polling types.Object `tfsdk:"polling"`
 }
 
@@ -76,82 +73,47 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 }
 
 type remoteFilePollingModel struct {
-	DeletionInterval        timetypes.GoDuration `tfsdk:"deletion_interval"`
-	DeletionTimeout         timetypes.GoDuration `tfsdk:"deletion_timeout"`
-	CreationInterval        timetypes.GoDuration `tfsdk:"creation_interval"`
-	CreationTimeout         timetypes.GoDuration `tfsdk:"creation_timeout"`
-	ChecksumComputeInterval timetypes.GoDuration `tfsdk:"checksum_compute_interval"`
-	ChecksumComputeTimeout  timetypes.GoDuration `tfsdk:"checksum_compute_timeout"`
+	Delete          types.Object `tfsdk:"delete"`
+	Create          types.Object `tfsdk:"create"`
+	ChecksumCompute types.Object `tfsdk:"checksum_compute"`
 }
 
 func (o remoteFilePollingModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(remoteFilePollingModel{}.AttrTypes(), map[string]attr.Value{
-		"deletion_interval":         timetypes.NewGoDurationValue(1 * time.Second),
-		"deletion_timeout":          timetypes.NewGoDurationValue(1 * time.Minute),
-		"creation_interval":         timetypes.NewGoDurationValue(1 * time.Second),
-		"creation_timeout":          timetypes.NewGoDurationValue(1 * time.Minute),
-		"checksum_compute_interval": timetypes.NewGoDurationValue(1 * time.Second),
-		"checksum_compute_timeout":  timetypes.NewGoDurationValue(1 * time.Minute),
+		"create":           pollingSpecModel{}.defaults(),
+		"delete":           pollingSpecModel{}.defaults(),
+		"checksum_compute": pollingSpecModel{}.defaults(),
 	})
 }
 
 func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"creation_interval": schema.StringAttribute{
+		"create": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			Default:             stringdefault.StaticString("1s"),
-			MarkdownDescription: "The interval at which to poll the resource for creation.",
+			MarkdownDescription: "Creation polling configuration",
+			Attributes:          pollingSpecModel{}.ResourceAttributes(),
 		},
-		"creation_timeout": schema.StringAttribute{
+		"delete": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			Default:             stringdefault.StaticString("1m"),
-			MarkdownDescription: "The timeout for creating the resource.",
+			MarkdownDescription: "Deletion polling configuration",
+			Attributes:          pollingSpecModel{}.ResourceAttributes(),
 		},
-
-		"deletion_interval": schema.StringAttribute{
+		"checksum_compute": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			Default:             stringdefault.StaticString("1s"),
-			MarkdownDescription: "The interval at which to poll the resource for deletion.",
-		},
-		"deletion_timeout": schema.StringAttribute{
-			Optional:            true,
-			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			Default:             stringdefault.StaticString("1m"),
-			MarkdownDescription: "The timeout for deleting the resource.",
-		},
-
-		"checksum_compute_interval": schema.StringAttribute{
-			Optional:            true,
-			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			Default:             stringdefault.StaticString("1s"),
-			MarkdownDescription: "The interval at which to poll the resource for checksum.",
-		},
-		"checksum_compute_timeout": schema.StringAttribute{
-			Optional:            true,
-			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			Default:             stringdefault.StaticString("1m"),
-			MarkdownDescription: "The timeout for computing the checksum.",
+			MarkdownDescription: "Checksum compute polling configuration",
+			Attributes:          pollingSpecModel{}.ResourceAttributes(),
 		},
 	}
 }
 
 func (o remoteFilePollingModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"creation_interval":         timetypes.GoDurationType{},
-		"creation_timeout":          timetypes.GoDurationType{},
-		"deletion_interval":         timetypes.GoDurationType{},
-		"deletion_timeout":          timetypes.GoDurationType{},
-		"checksum_compute_interval": timetypes.GoDurationType{},
-		"checksum_compute_timeout":  timetypes.GoDurationType{},
+		"create":           types.ObjectType{AttrTypes: pollingSpecModel{}.AttrTypes()},
+		"delete":           types.ObjectType{AttrTypes: pollingSpecModel{}.AttrTypes()},
+		"checksum_compute": types.ObjectType{AttrTypes: pollingSpecModel{}.AttrTypes()},
 	}
 }
 
@@ -423,14 +385,15 @@ func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFil
 		diagnostics.Append(diags...)
 		return
 	}
-	/*
-	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+
+	var createPolling pollingSpecModel
+
+	if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
 		diagnostics.Append(diags...)
 		return
 	}
-	*/
 
-	if diags := waitForDownloadTask(ctx, v.client, taskID, polling); diags.HasError() {
+	if diags := waitForDownloadTask(ctx, v.client, taskID, createPolling); diags.HasError() {
 		diagnostics.Append(diags...)
 		return
 	}
@@ -456,8 +419,15 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
 	if err != nil {
+		var createPolling pollingSpecModel
+
+		if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
 		// File does not exist yet, wait for download task to complete
-		if diags := waitForDownloadTask(ctx, v.client, model.TaskID.ValueInt64(), polling); diags.HasError() {
+		if diags := waitForDownloadTask(ctx, v.client, model.TaskID.ValueInt64(), createPolling); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
@@ -543,7 +513,14 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		return
 	}
 
-	if diags := deleteFilesIfExist(ctx, v.client, polling, oldModel.DestinationPath.ValueString()); diags.HasError() {
+	var deletePolling pollingSpecModel
+
+	if diags := polling.Delete.As(ctx, &deletePolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := deleteFilesIfExist(ctx, v.client, deletePolling, oldModel.DestinationPath.ValueString()); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 	}
 
@@ -566,7 +543,14 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 	newModel.TaskID = basetypes.NewInt64Value(taskID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 
-	if diags := waitForDownloadTask(ctx, v.client, taskID, polling); diags.HasError() {
+	var createPolling pollingSpecModel
+
+	if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForDownloadTask(ctx, v.client, taskID, createPolling); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
@@ -608,7 +592,14 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	if diags := deleteFilesIfExist(ctx, v.client, polling, model.DestinationPath.ValueString()); diags.HasError() {
+	var deletePolling pollingSpecModel
+
+	if diags := polling.Delete.As(ctx, &deletePolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := deleteFilesIfExist(ctx, v.client, deletePolling, model.DestinationPath.ValueString()); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
@@ -679,85 +670,6 @@ func (v *remoteFileModel) setChecksum(method, value string) {
 	v.Checksum = basetypes.NewStringValue(fmt.Sprintf("%s:%s", method, value))
 }
 
-func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) error {
-	errs := make([]error, 0, 2)
-
-	if err := c.UpdateDownloadTask(ctx, taskID, freeboxTypes.DownloadTaskUpdate{
-		Status: freeboxTypes.DownloadTaskStatusStopped,
-	}); err != nil {
-		if errors.Is(err, client.ErrTaskNotFound) {
-			return nil
-		}
-
-		errs = append(errs, fmt.Errorf("stop download task: %w", err))
-	}
-
-	if err := c.EraseDownloadTask(ctx, taskID); err != nil {
-		if errors.Is(err, client.ErrTaskNotFound) {
-			return nil
-		}
-
-		errs = append(errs, fmt.Errorf("erase download task: %w", err))
-	}
-
-	return errors.Join(errs...)
-}
-
-func deleteFilesIfExist(ctx context.Context, c client.Client, polling remoteFilePollingModel, paths ...string) (diagnostics diag.Diagnostics) {
-	filesToDelete := make([]string, 0, len(paths))
-
-	for _, path := range paths {
-		_, err := c.GetFileInfo(ctx, path)
-		if err != nil {
-			if !errors.Is(err, client.ErrPathNotFound) {
-				diagnostics.AddError("Failed to get file info", err.Error())
-			}
-
-			continue
-		}
-
-		filesToDelete = append(filesToDelete, path)
-	}
-
-	if diagnostics.HasError() {
-		return
-	}
-
-	if len(filesToDelete) == 0 {
-		return nil
-	}
-
-	task, err := c.RemoveFiles(ctx, filesToDelete)
-	if err != nil {
-		diagnostics.AddError("Failed to remove files", err.Error())
-		return
-	}
-
-	interval, diags := polling.DeletionInterval.ValueGoDuration()
-	if diags.HasError() {
-		diagnostics.Append(diags...)
-		return
-	}
-
-	timeout, diags := polling.DeletionInterval.ValueGoDuration()
-	if diags.HasError() {
-		diagnostics.Append(diags...)
-		return
-	}
-
-	if err := waitForFileSystemTask(ctx, c, task.ID, interval, timeout); err != nil {
-		var taskError *taskError
-		if errors.As(err, &taskError) && taskError.errorCode == string(freeboxTypes.FileTaskErrorFileNotFound) {
-			return
-		}
-
-		diagnostics.AddError("Failed to wait for file system task", err.Error())
-		return
-	}
-
-	return
-}
-
 // verifyFileChecksum verifies the checksum of the file.
 func verifyFileChecksum(ctx context.Context, client client.Client, path string, checksum string, polling remoteFilePollingModel) (diagnostics diag.Diagnostics) {
 	hMethod, hValue := hashSpec(checksum)
@@ -791,20 +703,15 @@ func fileChecksum(ctx context.Context, client client.Client, path string, hashTy
 		return
 	}
 
-	interval, diags := polling.ChecksumComputeInterval.ValueGoDuration()
-	if diags.HasError() {
+	var checksumPolling pollingSpecModel
+
+	if diags := polling.ChecksumCompute.As(ctx, &checksumPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
 		diagnostics.Append(diags...)
 		return
 	}
 
-	timeout, diags := polling.ChecksumComputeTimeout.ValueGoDuration()
-	if diags.HasError() {
+	if diags := waitForFileSystemTask(ctx, client, task.ID, checksumPolling); diags.HasError() {
 		diagnostics.Append(diags...)
-		return
-	}
-
-	if err := waitForFileSystemTask(ctx, client, task.ID, interval, timeout); err != nil {
-		diagnostics.AddError("Failed to wait for file system task", err.Error())
 		return
 	}
 
@@ -815,106 +722,6 @@ func fileChecksum(ctx context.Context, client client.Client, path string, hashTy
 	}
 
 	return hash, nil
-}
-
-type taskError struct {
-	taskID    int64
-	errorCode string
-}
-
-func (e *taskError) Error() string {
-	return fmt.Sprintf("task %d failed with error code %q", e.taskID, e.errorCode)
-}
-
-// waitForFileSystemTask waits for the system task to complete.
-func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int64, interval, timeout time.Duration) error {
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	for {
-		task, taskErr := client.GetFileSystemTask(ctx, taskID)
-		if taskErr != nil {
-			return fmt.Errorf("get task: %w", taskErr)
-		}
-
-		switch task.State {
-		case freeboxTypes.FileTaskStateFailed:
-			return &taskError{taskID: taskID, errorCode: string(task.Error)}
-		case freeboxTypes.FileTaskStateDone:
-			return nil // Done
-		case freeboxTypes.FileTaskStatePaused:
-			return errStoppedTask(taskID)
-		default:
-			// Nothing to do
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-tick.C:
-		}
-	}
-}
-
-const (
-	badHashError = "http_bad_hash"
-)
-
-// waitForDownloadTask waits for the download task to complete.
-func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, polling remoteFilePollingModel) (diagnostics diag.Diagnostics) {
-	interval, diags := polling.CreationInterval.ValueGoDuration()
-	if diags.HasError() {
-		diagnostics.Append(diags...)
-		return
-	}
-
-	timeout, diags := polling.CreationTimeout.ValueGoDuration()
-	if diags.HasError() {
-		diagnostics.Append(diags...)
-		return
-	}
-
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
-
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	for {
-		task, taskErr := c.GetDownloadTask(ctx, taskID)
-		if taskErr != nil {
-			diagnostics.AddError("Failed to get download task", taskErr.Error())
-		}
-
-		switch task.Status {
-		case freeboxTypes.DownloadTaskStatusError:
-			diagnostics.AddError("Download task failed", fmt.Sprintf("Error code: %s", task.Error))
-			return
-		case freeboxTypes.DownloadTaskStatusDone:
-			return nil // Done
-		case freeboxTypes.DownloadTaskStatusStopped:
-			diagnostics.AddError("Download task stopped", "The download task was stopped")
-			return
-		default:
-			// Nothing to do
-		}
-
-		select {
-		case <-ctx.Done():
-			diagnostics.AddError("Download task timeout", ctx.Err().Error())
-			return
-		case <-tick.C:
-		}
-	}
-}
-
-type errStoppedTask int64
-
-func (e errStoppedTask) Error() string {
-	return fmt.Sprintf("task %d is on pause, please resume it", int64(e))
 }
 
 type sourceURLValidator struct{}
