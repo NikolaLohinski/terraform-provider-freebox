@@ -11,12 +11,16 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -26,8 +30,8 @@ import (
 )
 
 var (
-	_ resource.Resource                = &remoteFileResource{}
-	_ resource.ResourceWithImportState = &remoteFileResource{}
+	_ resource.Resource                = (*remoteFileResource)(nil)
+	_ resource.ResourceWithImportState = (*remoteFileResource)(nil)
 )
 
 func NewRemoteFileResource() resource.Resource {
@@ -42,7 +46,7 @@ type remoteFileResource struct {
 // remoteFileModel describes the resource data model.
 type remoteFileModel struct {
 	// DestinationPath is the file path on the Freebox.
-    DestinationPath types.String `tfsdk:"destination_path"`
+	DestinationPath types.String `tfsdk:"destination_path"`
 	// SourceURL is the file URL.
 	SourceURL types.String `tfsdk:"source_url"`
 	// Checksum is the file checksum.
@@ -50,23 +54,164 @@ type remoteFileModel struct {
 	// The format is sha256:xxxxxx or sha512:xxxxxx; or the URL of a SHA256SUMS, SHA512SUMS, -CHECKSUM or .sha256 file.
 	Checksum types.String `tfsdk:"checksum"`
 
-	// Credentials is the credentials to use for the operation.
-	Authentication *remoteFileModelCredentialsModel `tfsdk:"authentication"`
+	// Authentication is the credentials to use for the operation.
+	Authentication types.Object `tfsdk:"authentication"`
 
 	// taskID is the task identifier.
 	TaskID types.Int64 `tfsdk:"task_id"`
+
+	// polling is the polling configuration.
+	Polling types.Object `tfsdk:"polling"`
 }
 
-type remoteFileModelCredentialsModel struct {
+func (o remoteFileModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"destination_path": types.StringType,
+		"source_url":       types.StringType,
+		"checksum":         types.StringType,
+		"authentication":   types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
+		"task_id":          types.Int64Type,
+		"polling":          types.ObjectType{AttrTypes: remoteFilePollingModel{}.AttrTypes()},
+	}
+}
+
+type remoteFilePollingModel struct {
+	DeletionInterval        timetypes.GoDuration `tfsdk:"deletion_interval"`
+	DeletionTimeout         timetypes.GoDuration `tfsdk:"deletion_timeout"`
+	CreationInterval        timetypes.GoDuration `tfsdk:"creation_interval"`
+	CreationTimeout         timetypes.GoDuration `tfsdk:"creation_timeout"`
+	ChecksumComputeInterval timetypes.GoDuration `tfsdk:"checksum_compute_interval"`
+	ChecksumComputeTimeout  timetypes.GoDuration `tfsdk:"checksum_compute_timeout"`
+}
+
+func (o remoteFilePollingModel) defaults() basetypes.ObjectValue {
+	return basetypes.NewObjectValueMust(remoteFilePollingModel{}.AttrTypes(), map[string]attr.Value{
+		"deletion_interval":         timetypes.NewGoDurationValue(1 * time.Second),
+		"deletion_timeout":          timetypes.NewGoDurationValue(1 * time.Minute),
+		"creation_interval":         timetypes.NewGoDurationValue(1 * time.Second),
+		"creation_timeout":          timetypes.NewGoDurationValue(1 * time.Minute),
+		"checksum_compute_interval": timetypes.NewGoDurationValue(1 * time.Second),
+		"checksum_compute_timeout":  timetypes.NewGoDurationValue(1 * time.Minute),
+	})
+}
+
+func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"creation_interval": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			CustomType:          timetypes.GoDurationType{},
+			Default:             stringdefault.StaticString("1s"),
+			MarkdownDescription: "The interval at which to poll the resource for creation.",
+		},
+		"creation_timeout": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			CustomType:          timetypes.GoDurationType{},
+			Default:             stringdefault.StaticString("1m"),
+			MarkdownDescription: "The timeout for creating the resource.",
+		},
+
+		"deletion_interval": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			CustomType:          timetypes.GoDurationType{},
+			Default:             stringdefault.StaticString("1s"),
+			MarkdownDescription: "The interval at which to poll the resource for deletion.",
+		},
+		"deletion_timeout": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			CustomType:          timetypes.GoDurationType{},
+			Default:             stringdefault.StaticString("1m"),
+			MarkdownDescription: "The timeout for deleting the resource.",
+		},
+
+		"checksum_compute_interval": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			CustomType:          timetypes.GoDurationType{},
+			Default:             stringdefault.StaticString("1s"),
+			MarkdownDescription: "The interval at which to poll the resource for checksum.",
+		},
+		"checksum_compute_timeout": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			CustomType:          timetypes.GoDurationType{},
+			Default:             stringdefault.StaticString("1m"),
+			MarkdownDescription: "The timeout for computing the checksum.",
+		},
+	}
+}
+
+func (o remoteFilePollingModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"creation_interval":         timetypes.GoDurationType{},
+		"creation_timeout":          timetypes.GoDurationType{},
+		"deletion_interval":         timetypes.GoDurationType{},
+		"deletion_timeout":          timetypes.GoDurationType{},
+		"checksum_compute_interval": timetypes.GoDurationType{},
+		"checksum_compute_timeout":  timetypes.GoDurationType{},
+	}
+}
+
+type remoteFileModelAuthenticationsModel struct {
 	// BasicAuth is the basic authentication credentials.
-	BasicAuth *remoteFileModelCredentialsBasicAuthModel `tfsdk:"basic_auth"`
+	BasicAuth types.Object `tfsdk:"basic_auth"`
 }
 
-type remoteFileModelCredentialsBasicAuthModel struct {
+func (o remoteFileModelAuthenticationsModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"basic_auth": schema.SingleNestedAttribute{
+			Computed:            true,
+			Optional:            true,
+			MarkdownDescription: "Basic authentication credentials",
+			Attributes:          remoteFileModelAuthenticationsBasicAuthModel{}.ResourceAttributes(),
+		},
+	}
+}
+
+func (o remoteFileModelAuthenticationsModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"basic_auth": types.ObjectType{AttrTypes: remoteFileModelAuthenticationsBasicAuthModel{}.AttrTypes()},
+	}
+}
+
+func (o remoteFileModelAuthenticationsModel) defaults() basetypes.ObjectValue {
+	return basetypes.NewObjectNull(remoteFileModelAuthenticationsModel{}.AttrTypes())
+}
+
+type remoteFileModelAuthenticationsBasicAuthModel struct {
 	// Username is the username.
 	Username types.String `tfsdk:"username"`
 	// Password is the password.
 	Password types.String `tfsdk:"password"`
+}
+
+func (o remoteFileModelAuthenticationsBasicAuthModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"username": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Username",
+		},
+		"password": schema.StringAttribute{
+			Optional:            true,
+			Sensitive:           true,
+			MarkdownDescription: "Password",
+		},
+	}
+}
+
+func (o remoteFileModelAuthenticationsBasicAuthModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"username": types.StringType,
+		"password": types.StringType,
+	}
+}
+
+func (v *remoteFileModel) populateDefaults() {
+	v.Authentication = remoteFileModelAuthenticationsModel{}.defaults()
+	v.Polling = remoteFilePollingModel{}.defaults()
 }
 
 func (v *remoteFileModel) populateDestinationFromFileInfo(fileInfo freeboxTypes.FileInfo) {
@@ -79,15 +224,15 @@ func (v *remoteFileModel) populateFromDownloadTask(downloadTask freeboxTypes.Dow
 
 	// Do we really want to get the checksum from the download task?
 	if v.Checksum.IsUnknown() && downloadTask.InfoHash != "" {
-		v.Checksum = basetypes.NewStringValue(downloadTask.InfoHash)
+		method, value := hashSpec(downloadTask.InfoHash)
+		v.setChecksum(method, value)
 	}
 
 	// Credentials are not returned by the API
 	// Source URL is not returned by the API
-
 }
 
-func (v *remoteFileModel) toDownloadPayload() (payload freeboxTypes.DownloadRequest) {
+func (v *remoteFileModel) toDownloadPayload() (payload freeboxTypes.DownloadRequest, diagnostics diag.Diagnostics) {
 	payload.DownloadURLs = []string{v.SourceURL.ValueString()}
 	payload.Hash = v.Checksum.ValueString()
 
@@ -95,13 +240,28 @@ func (v *remoteFileModel) toDownloadPayload() (payload freeboxTypes.DownloadRequ
 	payload.DownloadDirectory = go_path.Dir(destinationPath)
 	payload.Filename = go_path.Base(destinationPath)
 
-	if v.Authentication != nil && v.Authentication.BasicAuth != nil {
-		if username := v.Authentication.BasicAuth.Username.ValueString(); username != "" {
-			payload.Username = username
+	if !v.Authentication.IsNull() {
+		var authentication *remoteFileModelAuthenticationsModel
+
+		if diags := v.Authentication.As(context.Background(), &authentication, basetypes.ObjectAsOptions{}); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
 		}
 
-		if password := v.Authentication.BasicAuth.Password.ValueString(); password != "" {
-			payload.Password = password
+		if !authentication.BasicAuth.IsUnknown() {
+			var basicAuth remoteFileModelAuthenticationsBasicAuthModel
+			if diags := authentication.BasicAuth.As(context.Background(), &basicAuth, basetypes.ObjectAsOptions{}); diags.HasError() {
+				diagnostics.Append(diags...)
+				return
+			}
+
+			if username := basicAuth.Username.ValueString(); username != "" {
+				payload.Username = username
+			}
+
+			if password := basicAuth.Password.ValueString(); password != "" {
+				payload.Password = password
+			}
 		}
 	}
 
@@ -118,14 +278,14 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 		Attributes: map[string]schema.Attribute{
 			"destination_path": schema.StringAttribute{
 				MarkdownDescription: "Path to the file on the Freebox",
-				Required: 		     true,
+				Required:            true,
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
 			},
 			"source_url": schema.StringAttribute{
 				MarkdownDescription: "VM ethernet interface MAC address",
-				Required: 		     true,
+				Required:            true,
 				Validators: []validator.String{
 					&sourceURLValidator{},
 				},
@@ -141,31 +301,23 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 			"authentication": schema.SingleNestedAttribute{
 				MarkdownDescription: "Authentication credentials to use for the operation",
 				Optional:            true,
-				Attributes: map[string]schema.Attribute{
-					"basic_auth": schema.SingleNestedAttribute{
-						Optional:            true,
-						MarkdownDescription: "Basic authentication credentials",
-						Attributes: map[string]schema.Attribute{
-							"username": schema.StringAttribute{
-								Optional:            true,
-								MarkdownDescription: "Username",
-							},
-							"password": schema.StringAttribute{
-								Optional:            true,
-								Sensitive:           true,
-								MarkdownDescription: "Password",
-							},
-						},
-					},
-				},
+				Computed:            true,
+				Attributes:          remoteFileModelAuthenticationsModel{}.ResourceAttributes(),
+				Default:             objectdefault.StaticValue(basetypes.NewObjectNull(remoteFileModelAuthenticationsModel{}.AttrTypes())),
 			},
 			"task_id": schema.Int64Attribute{
-				Optional:           true,
-				Computed:           true,
+				Computed:            true,
 				MarkdownDescription: "Task identifier",
 				Validators: []validator.Int64{
 					int64validator.AtLeast(0),
 				},
+			},
+			"polling": schema.SingleNestedAttribute{
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "Polling configuration",
+				Attributes:          remoteFilePollingModel{}.ResourceAttributes(),
+				Default:             objectdefault.StaticValue(remoteFilePollingModel{}.defaults()),
 			},
 		},
 	}
@@ -216,23 +368,36 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}
 
+	var polling remoteFilePollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
 	checksum := model.Checksum.ValueString()
 	if checksum == "" {
-		checksum, err = fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256))
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to read hash", err.Error())
+		result, diags := fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256), polling)
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
 			return
-		} else {
-			model.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
-			resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 		}
+		checksum = result
+		model.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	} else {
-		resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, model.DestinationPath.ValueString(), checksum)...)
+		resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, model.DestinationPath.ValueString(), checksum, polling)...)
 	}
 }
 
 func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFileModel, state tfsdk.State) (diagnostics diag.Diagnostics) {
-	taskID, err := v.client.AddDownloadTask(ctx, model.toDownloadPayload())
+	payload, diags := model.toDownloadPayload()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	taskID, err := v.client.AddDownloadTask(ctx, payload)
 	if err != nil {
 		diagnostics.AddError("Failed to add download task", err.Error())
 		return
@@ -248,8 +413,25 @@ func (v *remoteFileResource) createFromURL(ctx context.Context, model *remoteFil
 		diagnostics.Append(state.Set(ctx, &model)...)
 	}
 
-	if err := waitForDownloadTask(ctx, v.client, taskID); err != nil {
-		diagnostics.AddError("Failed to wait for download task", err.Error())
+	if diagnostics.HasError() {
+		return
+	}
+
+	var polling remoteFilePollingModel
+
+	if diags := tfsdk.ValueFrom(ctx, model.Polling, model.Polling.Type(ctx), &polling); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+	/*
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+	*/
+
+	if diags := waitForDownloadTask(ctx, v.client, taskID, polling); diags.HasError() {
+		diagnostics.Append(diags...)
 		return
 	}
 
@@ -265,11 +447,18 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
+	var polling remoteFilePollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
 	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
 	if err != nil {
 		// File does not exist yet, wait for download task to complete
-		if err := waitForDownloadTask(ctx,v.client, model.TaskID.ValueInt64()); err != nil {
-			resp.Diagnostics.AddError("Failed to wait for download task", err.Error())
+		if diags := waitForDownloadTask(ctx, v.client, model.TaskID.ValueInt64(), polling); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
 			return
 		}
 	}
@@ -289,9 +478,9 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 
 	hMethod, _ := hashSpec(model.Checksum.ValueString())
 
-	hash, err := fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), hMethod)
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to read hash", err.Error())
+	hash, diags := fileChecksum(ctx, v.client, model.DestinationPath.ValueString(), hMethod, polling)
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	} else {
 		model.setChecksum(hMethod, hash)
@@ -317,7 +506,7 @@ func (v *remoteFileResource) findTaskByPath(ctx context.Context, destinationPath
 	}
 
 	if task.ID == 0 {
-		return freeboxTypes.DownloadTask{}, &taskError{taskID: 0, errorCode: string(freeboxTypes.DownloadTaskErrorNotFound)}
+		return freeboxTypes.DownloadTask{}, &taskError{taskID: 0, errorCode: string("task_not_found")}
 	}
 
 	return task, nil
@@ -347,15 +536,28 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.AddError("Failed to stop and delete download task", err.Error())
 	}
 
-	if err := deleteFilesIfExist(ctx, v.client, oldModel.DestinationPath.ValueString()); err != nil {
-		resp.Diagnostics.AddError("Failed to delete file(s)", err.Error())
+	var polling remoteFilePollingModel
+
+	if diags := newModel.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := deleteFilesIfExist(ctx, v.client, polling, oldModel.DestinationPath.ValueString()); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 	}
 
 	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	taskID, err := v.client.AddDownloadTask(ctx, newModel.toDownloadPayload())
+	payload, diags := newModel.toDownloadPayload()
+	if diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	taskID, err := v.client.AddDownloadTask(ctx, payload)
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to add download task", err.Error())
 		return
@@ -364,27 +566,24 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 	newModel.TaskID = basetypes.NewInt64Value(taskID)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 
-	if err := waitForDownloadTask(ctx, v.client, taskID); err != nil {
-		resp.Diagnostics.AddError("Failed to wait for download task", err.Error())
+	if diags := waitForDownloadTask(ctx, v.client, taskID, polling); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
 	}
-
-	resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 
 	checksum := newModel.Checksum.ValueString()
 	if checksum == "" {
-		checksum, err = fileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256))
-		if err != nil {
-			resp.Diagnostics.AddError(
-				"Failed to read hash",
-				err.Error(),
-			)
+		result, diags := fileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), string(freeboxTypes.HashTypeSHA256), polling)
+		if diags.HasError() {
+			resp.Diagnostics.Append(diags...)
 			return
-		} else {
-			newModel.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
-			resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 		}
+
+		checksum = result
+		newModel.setChecksum(string(freeboxTypes.HashTypeSHA256), checksum)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 	} else {
-		resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), newModel.Checksum.ValueString())...)
+		resp.Diagnostics.Append(verifyFileChecksum(ctx, v.client, newModel.DestinationPath.ValueString(), newModel.Checksum.ValueString(), polling)...)
 	}
 }
 
@@ -402,8 +601,15 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	if err := deleteFilesIfExist(ctx, v.client, model.DestinationPath.ValueString()); err != nil {
-		resp.Diagnostics.AddError("Failed to delete file", err.Error())
+	var polling remoteFilePollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := deleteFilesIfExist(ctx, v.client, polling, model.DestinationPath.ValueString()); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 }
@@ -423,6 +629,8 @@ func (v *remoteFileResource) ImportState(ctx context.Context, req resource.Impor
 
 	var model remoteFileModel
 
+	model.populateDefaults()
+
 	model.populateFromDownloadTask(task)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
@@ -438,6 +646,9 @@ func (v *remoteFileResource) importStateFromPath(ctx context.Context, req resour
 	}
 
 	var model remoteFileModel
+
+	model.populateDefaults()
+
 	model.populateDestinationFromFileInfo(fileInfo)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
@@ -468,7 +679,7 @@ func (v *remoteFileModel) setChecksum(method, value string) {
 	v.Checksum = basetypes.NewStringValue(fmt.Sprintf("%s:%s", method, value))
 }
 
-func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) (error) {
+func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) error {
 	errs := make([]error, 0, 2)
 
 	if err := c.UpdateDownloadTask(ctx, taskID, freeboxTypes.DownloadTaskUpdate{
@@ -492,15 +703,14 @@ func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int6
 	return errors.Join(errs...)
 }
 
-func deleteFilesIfExist(ctx context.Context, c client.Client, paths ...string) (error) {
+func deleteFilesIfExist(ctx context.Context, c client.Client, polling remoteFilePollingModel, paths ...string) (diagnostics diag.Diagnostics) {
 	filesToDelete := make([]string, 0, len(paths))
 
-	var errs []error
 	for _, path := range paths {
 		_, err := c.GetFileInfo(ctx, path)
 		if err != nil {
 			if !errors.Is(err, client.ErrPathNotFound) {
-				errs = append(errs, err)
+				diagnostics.AddError("Failed to get file info", err.Error())
 			}
 
 			continue
@@ -509,8 +719,8 @@ func deleteFilesIfExist(ctx context.Context, c client.Client, paths ...string) (
 		filesToDelete = append(filesToDelete, path)
 	}
 
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	if diagnostics.HasError() {
+		return
 	}
 
 	if len(filesToDelete) == 0 {
@@ -519,28 +729,42 @@ func deleteFilesIfExist(ctx context.Context, c client.Client, paths ...string) (
 
 	task, err := c.RemoveFiles(ctx, filesToDelete)
 	if err != nil {
-		return fmt.Errorf("remove files: %w", err)
+		diagnostics.AddError("Failed to remove files", err.Error())
+		return
 	}
 
-	if err := waitForFileSystemTask(ctx, c, task.ID); err != nil {
+	interval, diags := polling.DeletionInterval.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := polling.DeletionInterval.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if err := waitForFileSystemTask(ctx, c, task.ID, interval, timeout); err != nil {
 		var taskError *taskError
 		if errors.As(err, &taskError) && taskError.errorCode == string(freeboxTypes.FileTaskErrorFileNotFound) {
-			return nil
+			return
 		}
 
-		return fmt.Errorf("wait for file system task: %w", err)
+		diagnostics.AddError("Failed to wait for file system task", err.Error())
+		return
 	}
 
-	return nil
+	return
 }
 
 // verifyFileChecksum verifies the checksum of the file.
-func verifyFileChecksum(ctx context.Context, client client.Client, path string, checksum string) (diagnostics diag.Diagnostics) {
+func verifyFileChecksum(ctx context.Context, client client.Client, path string, checksum string, polling remoteFilePollingModel) (diagnostics diag.Diagnostics) {
 	hMethod, hValue := hashSpec(checksum)
 
-	hash, err := fileChecksum(ctx, client, path, hMethod)
-	if err != nil {
-		diagnostics.AddError("Failed to read hash", err.Error())
+	hash, diags := fileChecksum(ctx, client, path, hMethod, polling)
+	if diags.HasError() {
+		diagnostics.Append(diags...)
 		return
 	}
 
@@ -552,7 +776,7 @@ func verifyFileChecksum(ctx context.Context, client client.Client, path string, 
 }
 
 // fileChecksum verifies the checksum of the file.
-func fileChecksum(ctx context.Context, client client.Client, path string, hashType string) (string, error) {
+func fileChecksum(ctx context.Context, client client.Client, path string, hashType string, polling remoteFilePollingModel) (checsum string, diagnostics diag.Diagnostics) {
 	if hashType == "" {
 		hashType = string(freeboxTypes.HashTypeSHA256)
 	}
@@ -563,23 +787,38 @@ func fileChecksum(ctx context.Context, client client.Client, path string, hashTy
 	})
 
 	if err != nil {
-		return "", fmt.Errorf("hash file task: %w", err)
+		diagnostics.AddError("Failed to add hash file task", err.Error())
+		return
 	}
 
-	if err := waitForFileSystemTask(ctx, client, task.ID); err != nil {
-		return "", fmt.Errorf("wait for file system task: %w", err)
+	interval, diags := polling.ChecksumComputeInterval.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := polling.ChecksumComputeTimeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if err := waitForFileSystemTask(ctx, client, task.ID, interval, timeout); err != nil {
+		diagnostics.AddError("Failed to wait for file system task", err.Error())
+		return
 	}
 
 	hash, err := client.GetHashResult(ctx, task.ID)
 	if err != nil {
-		return "", fmt.Errorf("get hash result: %w", err)
+		diagnostics.AddError("Failed to get hash result", err.Error())
+		return
 	}
 
 	return hash, nil
 }
 
 type taskError struct {
-	taskID int64
+	taskID    int64
 	errorCode string
 }
 
@@ -588,9 +827,12 @@ func (e *taskError) Error() string {
 }
 
 // waitForFileSystemTask waits for the system task to complete.
-func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int64) (error) {
-	tick := time.NewTicker(5 * time.Second)
+func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int64, interval, timeout time.Duration) error {
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	for {
 		task, taskErr := client.GetFileSystemTask(ctx, taskID)
@@ -622,30 +864,48 @@ const (
 )
 
 // waitForDownloadTask waits for the download task to complete.
-func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64) (error) {
-	tick := time.NewTicker(5 * time.Second)
+func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, polling remoteFilePollingModel) (diagnostics diag.Diagnostics) {
+	interval, diags := polling.CreationInterval.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := polling.CreationTimeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	tick := time.NewTicker(interval)
 	defer tick.Stop()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 
 	for {
 		task, taskErr := c.GetDownloadTask(ctx, taskID)
 		if taskErr != nil {
-			return fmt.Errorf("get task: %w", taskErr)
+			diagnostics.AddError("Failed to get download task", taskErr.Error())
 		}
 
 		switch task.Status {
 		case freeboxTypes.DownloadTaskStatusError:
-			return &taskError{taskID: taskID, errorCode: string(task.Error)}
+			diagnostics.AddError("Download task failed", fmt.Sprintf("Error code: %s", task.Error))
+			return
 		case freeboxTypes.DownloadTaskStatusDone:
 			return nil // Done
 		case freeboxTypes.DownloadTaskStatusStopped:
-			return errStoppedTask(taskID)
+			diagnostics.AddError("Download task stopped", "The download task was stopped")
+			return
 		default:
 			// Nothing to do
 		}
 
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			diagnostics.AddError("Download task timeout", ctx.Err().Error())
+			return
 		case <-tick.C:
 		}
 	}
@@ -657,7 +917,7 @@ func (e errStoppedTask) Error() string {
 	return fmt.Sprintf("task %d is on pause, please resume it", int64(e))
 }
 
-type sourceURLValidator struct {}
+type sourceURLValidator struct{}
 
 var supportedShemes = []string{"http", "https", "ftp", "magnet"}
 
@@ -683,7 +943,7 @@ func (s *sourceURLValidator) MarkdownDescription(ctx context.Context) string {
 	return "source URL validator"
 }
 
-type checksumValidator struct {}
+type checksumValidator struct{}
 
 func (s *checksumValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	parts := strings.SplitN(req.ConfigValue.ValueString(), ":", 2)

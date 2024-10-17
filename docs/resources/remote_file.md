@@ -28,6 +28,10 @@ output "task_id" {
 
 - `authentication` (Attributes) Authentication credentials to use for the operation (see [below for nested schema](#nestedatt--authentication))
 - `checksum` (String) Checksum to verify the hash of the downloaded file
+- `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
+
+### Read-Only
+
 - `task_id` (Number) Task identifier
 
 <a id="nestedatt--authentication"></a>
@@ -44,6 +48,20 @@ Optional:
 
 - `password` (String, Sensitive) Password
 - `username` (String) Username
+
+
+
+<a id="nestedatt--polling"></a>
+### Nested Schema for `polling`
+
+Optional:
+
+- `checksum_compute_interval` (String) The interval at which to poll the resource for checksum.
+- `checksum_compute_timeout` (String) The timeout for computing the checksum.
+- `creation_interval` (String) The interval at which to poll the resource for creation.
+- `creation_timeout` (String) The timeout for creating the resource.
+- `deletion_interval` (String) The interval at which to poll the resource for deletion.
+- `deletion_timeout` (String) The timeout for deleting the resource.
 
 ## Import
 

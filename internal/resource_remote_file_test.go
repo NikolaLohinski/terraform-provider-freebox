@@ -47,6 +47,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								resource "freebox_remote_file" "` + resourceName + `" {
 									source_url = "` + exampleFile.source + `"
 									destination_path = "` + exampleFile.filepath + `"
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
@@ -109,6 +115,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									source_url = "` + exampleFile.source + `"
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
@@ -171,6 +183,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									source_url = "` + existingDisk.source + `"
 									destination_path = "` + existingDisk.filepath + `"
 									checksum = "` + existingDisk.digest + `"
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							ExpectError: regexp.MustCompile(`File already exists`),
@@ -192,6 +210,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								source_url = "` + exampleFile.source + `"
 								destination_path = "` + exampleFile.filepath + `"
 								checksum = "` + exampleFile.digest + `"
+
+								polling = {
+									creation_interval = "1s"
+									deletion_interval = "1s"
+									checksum_compute_interval = "1s"
+								}
 							}
 						`,
 						Check: resource.ComposeAggregateTestCheckFunc(
@@ -220,6 +244,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								source_url = "` + exampleFile.source + `"
 								destination_path = "` + exampleFile.filepath + `.new"
 								checksum = "` + exampleFile.digest + `"
+
+								polling = {
+									creation_interval = "1s"
+									deletion_interval = "1s"
+									checksum_compute_interval = "1s"
+								}
 							}
 						`,
 						ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -280,6 +310,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									source_url = "` + exampleFile.source + `"
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
@@ -309,6 +345,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
 									task_id = null
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -376,7 +418,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 				downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
 				Expect(err).To(BeNil())
 				return downloadTask
-			}).Should(MatchFields(IgnoreExtras, Fields{
+			}, "30s").Should(MatchFields(IgnoreExtras, Fields{
 				"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
 			}))
 		})
@@ -392,6 +434,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									source_url = "` + exampleFile.source + `"
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							ResourceName:       "freebox_remote_file." + resourceName,
@@ -434,6 +482,12 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									source_url = "` + exampleFile.source + `"
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
+
+									polling = {
+										creation_interval = "1s"
+										deletion_interval = "1s"
+										checksum_compute_interval = "1s"
+									}
 								}
 							`,
 							ResourceName:       "freebox_remote_file." + resourceName,
