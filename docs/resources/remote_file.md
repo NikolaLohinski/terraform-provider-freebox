@@ -56,12 +56,35 @@ Optional:
 
 Optional:
 
-- `checksum_compute_interval` (String) The interval at which to poll the resource for checksum.
-- `checksum_compute_timeout` (String) The timeout for computing the checksum.
-- `creation_interval` (String) The interval at which to poll the resource for creation.
-- `creation_timeout` (String) The timeout for creating the resource.
-- `deletion_interval` (String) The interval at which to poll the resource for deletion.
-- `deletion_timeout` (String) The timeout for deleting the resource.
+- `checksum_compute` (Attributes) Checksum compute polling configuration (see [below for nested schema](#nestedatt--polling--checksum_compute))
+- `create` (Attributes) Creation polling configuration (see [below for nested schema](#nestedatt--polling--create))
+- `delete` (Attributes) Deletion polling configuration (see [below for nested schema](#nestedatt--polling--delete))
+
+<a id="nestedatt--polling--checksum_compute"></a>
+### Nested Schema for `polling.checksum_compute`
+
+Optional:
+
+- `interval` (String) The interval at which to poll the resource.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--create"></a>
+### Nested Schema for `polling.create`
+
+Optional:
+
+- `interval` (String) The interval at which to poll the resource.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--delete"></a>
+### Nested Schema for `polling.delete`
+
+Optional:
+
+- `interval` (String) The interval at which to poll the resource.
+- `timeout` (String) The timeout for the operation.
 
 ## Import
 
