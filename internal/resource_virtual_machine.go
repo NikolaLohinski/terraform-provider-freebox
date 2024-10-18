@@ -23,6 +23,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
@@ -223,10 +224,18 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"status": schema.StringAttribute{
 				Computed:            true,
+				Optional:            true,
+				Default:             stringdefault.StaticString(freeboxTypes.RunningStatus),
 				MarkdownDescription: "VM status",
-				PlanModifiers: []planmodifier.String{virtualMachineStaticStatusModifier{
-					status: freeboxTypes.RunningStatus,
-				}},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
+				Validators: []validator.String{
+					stringvalidator.OneOf(
+						freeboxTypes.RunningStatus,
+						freeboxTypes.StoppedStatus,
+					),
+				},
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
@@ -438,6 +447,8 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 
 	resp.Diagnostics.Append(req.Plan.Get(ctx, &model)...)
 
+	expectedStatus := model.Status.ValueString()
+
 	if resp.Diagnostics.HasError() {
 		return
 	}
@@ -479,14 +490,17 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 	ctx, cancel := context.WithTimeout(ctx, createTimeout)
 	defer cancel()
 
-	status, err := v.start(ctx, virtualMachine.ID)
-	model.Status = basetypes.NewStringValue(status)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to start virtual machine",
-			err.Error(),
-		)
-		return
+	// Start if needed
+	if expectedStatus == freeboxTypes.RunningStatus {
+		status, err := v.start(ctx, virtualMachine.ID)
+		model.Status = basetypes.NewStringValue(status)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to start virtual machine",
+				err.Error(),
+			)
+			return
+		}
 	}
 
 	networkingTimeout, diags := timeouts.Networking.ValueGoDuration()
@@ -622,6 +636,7 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
+	// Stop if not stopped
 	if state.Status.ValueString() != freeboxTypes.StoppedStatus {
 		killTimeout, diag := timeouts.Kill.ValueGoDuration()
 		if diag.HasError() {
@@ -653,14 +668,17 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
-	status, err := v.start(ctx, virtualMachine.ID)
-	model.Status = basetypes.NewStringValue(status)
-	if err != nil {
-		resp.Diagnostics.AddError(
-			"Failed to start virtual machine",
-			err.Error(),
-		)
-		return
+	// Start if needed
+	if model.Status.ValueString() == freeboxTypes.RunningStatus {
+		status, err := v.start(ctx, virtualMachine.ID)
+		model.Status = basetypes.NewStringValue(status)
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Failed to start virtual machine",
+				err.Error(),
+			)
+			return
+		}
 	}
 
 	networkingTimeout, diag := timeouts.Networking.ValueGoDuration()
