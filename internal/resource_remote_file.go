@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
@@ -80,7 +81,10 @@ type remoteFilePollingModel struct {
 
 func (o remoteFilePollingModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(remoteFilePollingModel{}.AttrTypes(), map[string]attr.Value{
-		"create":           pollingSpecModel{}.defaults(),
+		"create":           basetypes.NewObjectValueMust(pollingSpecModel{}.AttrTypes(), map[string]attr.Value{
+			"interval": timetypes.NewGoDurationValueFromStringMust("3s"),
+			"timeout":  timetypes.NewGoDurationValueFromStringMust("30m"),
+		}),
 		"delete":           pollingSpecModel{}.defaults(),
 		"checksum_compute": pollingSpecModel{}.defaults(),
 	})
@@ -93,18 +97,24 @@ func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute
 			Computed:            true,
 			MarkdownDescription: "Creation polling configuration",
 			Attributes:          pollingSpecModel{}.ResourceAttributes(),
+			Default:             objectdefault.StaticValue(basetypes.NewObjectValueMust(pollingSpecModel{}.AttrTypes(), map[string]attr.Value{
+				"interval": timetypes.NewGoDurationValueFromStringMust("3s"),
+				"timeout":  timetypes.NewGoDurationValueFromStringMust("30m"),
+			})),
 		},
 		"delete": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
 			MarkdownDescription: "Deletion polling configuration",
 			Attributes:          pollingSpecModel{}.ResourceAttributes(),
+			Default:             objectdefault.StaticValue(pollingSpecModel{}.defaults()),
 		},
 		"checksum_compute": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
 			MarkdownDescription: "Checksum compute polling configuration",
 			Attributes:          pollingSpecModel{}.ResourceAttributes(),
+			Default:             objectdefault.StaticValue(pollingSpecModel{}.defaults()),
 		},
 	}
 }
