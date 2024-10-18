@@ -43,6 +43,7 @@ output "ipv4" {
 - `enable_cloudinit` (Boolean) Whether or not to enable passing data through `cloudinit`. This uses the NoCloud iso image method; it will add a virtual CDROM drive (distinct from the one passed by `cd_path`) with the data in `cloudinit_userdata` and `cloudinit_hostname` when enabled
 - `enable_screen` (Boolean) Whether or not this VM should have a virtual screen, to use with the VNC websocket protocol
 - `os` (String) Type of OS used for this VM. Only used to set an icon for now
+- `status` (String) VM status
 - `timeouts` (Attributes) Timeouts for various operations expressed as strings such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours) (see [below for nested schema](#nestedatt--timeouts))
 
 ### Read-Only
@@ -50,7 +51,6 @@ output "ipv4" {
 - `id` (Number) Unique identifier of the VM
 - `mac` (String) VM ethernet interface MAC address
 - `networking` (Attributes Set) Network binds of the virtual machine (see [below for nested schema](#nestedatt--networking))
-- `status` (String) VM status
 
 <a id="nestedatt--timeouts"></a>
 ### Nested Schema for `timeouts`
