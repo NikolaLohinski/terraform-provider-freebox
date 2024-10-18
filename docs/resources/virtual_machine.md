@@ -31,7 +31,7 @@ output "ipv4" {
 - `disk_path` (String) Path to the hard disk image of this VM
 - `disk_type` (String) Type of disk image
 - `memory` (Number) Memory allocated to this VM in megabytes
-- `name` (String) Name of this VM. Max 31 characters
+- `name` (String) Name of this VM
 - `vcpus` (Number) Number of virtual CPUs to allocate to this VM
 
 ### Optional

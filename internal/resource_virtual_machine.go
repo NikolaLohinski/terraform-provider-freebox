@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -228,7 +229,10 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "Name of this VM. Max 31 characters",
+				MarkdownDescription: "Name of this VM",
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 31),
+				},
 			},
 			"disk_path": schema.StringAttribute{
 				Required:            true,
@@ -238,7 +242,10 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 				Required:            true,
 				MarkdownDescription: "Type of disk image",
 				Validators: []validator.String{
-					stringvalidator.OneOf([]string{freeboxTypes.QCow2Disk, freeboxTypes.RawDisk}...),
+					stringvalidator.OneOf(
+						freeboxTypes.QCow2Disk,
+						freeboxTypes.RawDisk,
+					),
 				},
 			},
 			"cd_path": schema.StringAttribute{
@@ -249,13 +256,16 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			"memory": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Memory allocated to this VM in megabytes",
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+				},
 			},
 			"os": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
 				MarkdownDescription: "Type of OS used for this VM. Only used to set an icon for now",
 				Validators: []validator.String{
-					stringvalidator.OneOf([]string{
+					stringvalidator.OneOf(
 						freeboxTypes.CentosOS,
 						freeboxTypes.DebianOS,
 						freeboxTypes.FedoraOS,
@@ -265,12 +275,15 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 						freeboxTypes.OpensuseOS,
 						freeboxTypes.UbuntuOS,
 						freeboxTypes.UnknownOS,
-					}...),
+					),
 				},
 			},
 			"vcpus": schema.Int64Attribute{
 				Required:            true,
 				MarkdownDescription: "Number of virtual CPUs to allocate to this VM",
+				Validators: []validator.Int64{
+					int64validator.AtLeast(1),
+				},
 			},
 			"enable_screen": schema.BoolAttribute{
 				Optional:            true,
