@@ -49,9 +49,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									destination_path = "` + exampleFile.filepath + `"
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,
@@ -104,6 +113,120 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			})
 		})
 
+		Context("without a polling", func() {
+			It("should download and delete the file with the defaults", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: providerBlock + `
+								resource "freebox_remote_file" "` + resourceName + `" {
+									source_url = "` + exampleFile.source + `"
+									destination_path = "` + exampleFile.filepath + `"
+								}
+							`,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.create.interval", "3s"),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.create.timeout", "30m"),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.delete.interval", "1s"),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.delete.timeout", "1m"),
+								func(s *terraform.State) error {
+									identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+									Expect(err).To(BeNil())
+									task, err := freeboxClient.GetDownloadTask(ctx, int64(identifier))
+									Expect(err).To(BeNil())
+									Expect(task.Name).To(Equal(exampleFile.filename))
+									Expect(task.Status).To(BeEquivalentTo(types.DownloadTaskStatusDone))
+
+									fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+									Expect(err).To(BeNil())
+									Expect(fileInfo.Name).To(Equal(exampleFile.filename))
+									Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+									return nil
+								},
+							),
+						},
+					},
+					CheckDestroy: func(s *terraform.State) error {
+						identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+						Expect(err).To(BeNil())
+						Expect(identifier).ToNot(BeZero())
+
+						_, err = freeboxClient.GetDownloadTask(ctx, int64(identifier))
+						Expect(err).To(MatchError(client.ErrTaskNotFound))
+
+						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+						return nil
+					},
+				})
+			})
+
+			Context("with some polling", func() {
+				It("should download and delete the file with the defaults", func(ctx SpecContext) {
+					resource.UnitTest(GinkgoT(), resource.TestCase{
+						ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+						Steps: []resource.TestStep{
+							{
+								Config: providerBlock + `
+									resource "freebox_remote_file" "` + resourceName + `" {
+										source_url = "` + exampleFile.source + `"
+										destination_path = "` + exampleFile.filepath + `"
+
+										polling = {
+											create = {
+												interval = "1s"
+												timeout = "1m"
+											}
+											delete = null
+										}
+									}
+								`,
+								Check: resource.ComposeAggregateTestCheckFunc(
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.create.interval", "1s"),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.create.timeout", "1m"),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.delete.interval", "1s"),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.delete.timeout", "1m"),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.checksum_compute.interval", "1s"),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "polling.checksum_compute.timeout", "1m"),
+									func(s *terraform.State) error {
+										identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+										Expect(err).To(BeNil())
+										task, err := freeboxClient.GetDownloadTask(ctx, int64(identifier))
+										Expect(err).To(BeNil())
+										Expect(task.Name).To(Equal(exampleFile.filename))
+										Expect(task.Status).To(BeEquivalentTo(types.DownloadTaskStatusDone))
+
+										fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+										Expect(err).To(BeNil())
+										Expect(fileInfo.Name).To(Equal(exampleFile.filename))
+										Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+										return nil
+									},
+								),
+							},
+						},
+						CheckDestroy: func(s *terraform.State) error {
+							identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_remote_file."+resourceName].Primary.Attributes["task_id"])
+							Expect(err).To(BeNil())
+							Expect(identifier).ToNot(BeZero())
+
+							_, err = freeboxClient.GetDownloadTask(ctx, int64(identifier))
+							Expect(err).To(MatchError(client.ErrTaskNotFound))
+
+							_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+							Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+							return nil
+						},
+					})
+				})
+			})
+		})
+
 		Context("with a checksum", func() {
 			It("should download, verify the checksum and delete the file", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
@@ -117,9 +240,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									checksum = "` + exampleFile.digest + `"
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,
@@ -185,9 +317,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									checksum = "` + existingDisk.digest + `"
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,
@@ -212,9 +353,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								checksum = "` + exampleFile.digest + `"
 
 								polling = {
-									creation_interval = "1s"
-									deletion_interval = "1s"
-									checksum_compute_interval = "1s"
+									create = {
+										interval = "1s"
+										timeout = "1m"
+									}
+									delete = {
+										interval = "1s"
+										timeout = "1m"
+									}
+									checksum_compute = {
+										interval = "1s"
+										timeout = "1m"
+									}
 								}
 							}
 						`,
@@ -246,9 +396,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								checksum = "` + exampleFile.digest + `"
 
 								polling = {
-									creation_interval = "1s"
-									deletion_interval = "1s"
-									checksum_compute_interval = "1s"
+									create = {
+										interval = "1s"
+										timeout = "1m"
+									}
+									delete = {
+										interval = "1s"
+										timeout = "1m"
+									}
+									checksum_compute = {
+										interval = "1s"
+										timeout = "1m"
+									}
 								}
 							}
 						`,
@@ -312,9 +471,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									checksum = "` + exampleFile.digest + `"
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,
@@ -347,9 +515,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									task_id = null
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,
@@ -436,9 +613,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									checksum = "` + exampleFile.digest + `"
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,
@@ -484,9 +670,18 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									checksum = "` + exampleFile.digest + `"
 
 									polling = {
-										creation_interval = "1s"
-										deletion_interval = "1s"
-										checksum_compute_interval = "1s"
+										create = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										delete = {
+											interval = "1s"
+											timeout = "1m"
+										}
+										checksum_compute = {
+											interval = "1s"
+											timeout = "1m"
+										}
 									}
 								}
 							`,

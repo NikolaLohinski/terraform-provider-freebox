@@ -10,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/nikolalohinski/free-go/client"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
@@ -22,8 +23,8 @@ type pollingSpecModel struct {
 
 func (o pollingSpecModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(pollingSpecModel{}.AttrTypes(), map[string]attr.Value{
-		"interval": timetypes.NewGoDurationValue(1 * time.Second),
-		"timeout":  timetypes.NewGoDurationValue(1 * time.Minute),
+		"interval": timetypes.NewGoDurationValueFromStringMust("1s"),
+		"timeout":  timetypes.NewGoDurationValueFromStringMust("1m"),
 	})
 }
 
@@ -34,12 +35,14 @@ func (o pollingSpecModel) ResourceAttributes() map[string]schema.Attribute {
 			Computed:            true,
 			CustomType:          timetypes.GoDurationType{},
 			MarkdownDescription: "The interval at which to poll the resource.",
+			Default: 		     stringdefault.StaticString(timetypes.NewGoDurationValueFromStringMust("1s").String()),
 		},
 		"timeout": schema.StringAttribute{
 			Optional:            true,
 			Computed:            true,
 			CustomType:          timetypes.GoDurationType{},
 			MarkdownDescription: "The timeout for the operation.",
+			Default: 		     stringdefault.StaticString(timetypes.NewGoDurationValueFromStringMust("1m").String()),
 		},
 	}
 }
