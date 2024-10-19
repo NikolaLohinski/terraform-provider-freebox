@@ -29,7 +29,6 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								memory    = 300
 								name      = "` + name + `"
 								disk_type = "qcow2"
-								status    = "stopped"
 								disk_path = "` + existingDisk.filepath + `"
 								timeouts = {
 									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
@@ -43,7 +42,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "memory", "300"),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_type", types.QCow2Disk),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "disk_path", existingDisk.filepath),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "status", "stopped"),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "status", "running"),
 							func(s *terraform.State) error {
 								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
 								Expect(err).To(BeNil())
@@ -54,7 +53,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								Expect(vm.Name).To(Equal(name))
 								Expect(vm.DiskType).To(Equal(types.QCow2Disk))
 								Expect(vm.DiskPath).To(Equal(types.Base64Path(existingDisk.filepath)))
-								Expect(vm.Status).To(BeEquivalentTo(types.StoppedStatus))
+								Expect(vm.Status).To(BeEquivalentTo(types.RunningStatus))
 								return nil
 							},
 						),
@@ -98,6 +97,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 								memory    = 300
 								name      = "` + name + `"
 								disk_type = "qcow2"
+								status    = "stopped"
 								disk_path = "` + existingDisk.filepath + `"
 								timeouts = {
 									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
@@ -109,12 +109,51 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 						Check: resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "name", name),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "enable_cloudinit", "false"),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "status", "stopped"),
+							func(s *terraform.State) error {
+								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
+								Expect(err).To(BeNil())
+								vm, err := freeboxClient.GetVirtualMachine(ctx, int64(identifier))
+								Expect(err).To(BeNil())
+								Expect(vm.Status).To(BeEquivalentTo(types.StoppedStatus))
+								return nil
+							},
+						),
+					},
+					{
+						Config: providerBlock + `
+							resource "freebox_virtual_machine" "` + name + `" {
+								vcpus     = 1
+								memory    = 300
+								name      = "` + name + `"
+								disk_type = "qcow2"
+								status    = "running"
+								disk_path = "` + existingDisk.filepath + `"
+								enable_cloudinit   = true
+								cloudinit_hostname = "` + name + `"
+								cloudinit_userdata = yamlencode(jsondecode(<<EOF
+								` + cloudInitConfig + `
+								EOF
+								))
+								timeouts = {
+									kill       = "500ms" // The image used for tests hangs on SIGTERM and needs a SIGKILL to terminate
+									networking = "0s" // The image used for tests does not register to the network
+								}
+							}
+						`,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "name", name),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "enable_cloudinit", "true"),
+							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "cloudinit_hostname", name),
 							resource.TestCheckResourceAttr("freebox_virtual_machine."+name, "status", "running"),
 							func(s *terraform.State) error {
 								identifier, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
 								Expect(err).To(BeNil())
 								vm, err := freeboxClient.GetVirtualMachine(ctx, int64(identifier))
 								Expect(err).To(BeNil())
+								Expect(vm.EnableCloudInit).To(BeTrue())
+								Expect(vm.CloudHostName).To(Equal(name))
+								Expect(vm.CloudInitUserData).To(MatchYAML(cloudInitConfig))
 								Expect(vm.Status).To(BeEquivalentTo(types.RunningStatus))
 								return nil
 							},

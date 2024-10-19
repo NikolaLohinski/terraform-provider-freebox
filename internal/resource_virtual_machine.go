@@ -610,6 +610,8 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 		return
 	}
 
+	expectedStatus := model.Status.ValueString()
+
 	payload, diagnostics := model.toClientPayload(ctx)
 	if diagnostics.HasError() {
 		resp.Diagnostics.Append(diagnostics...)
@@ -669,7 +671,7 @@ func (v *virtualMachineResource) Update(ctx context.Context, req resource.Update
 	}
 
 	// Start if needed
-	if model.Status.ValueString() == freeboxTypes.RunningStatus {
+	if expectedStatus == freeboxTypes.RunningStatus {
 		status, err := v.start(ctx, virtualMachine.ID)
 		model.Status = basetypes.NewStringValue(status)
 		if err != nil {
