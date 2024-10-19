@@ -32,7 +32,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			directory: existingDisk.directory,
 			filepath:  path.Join(root, existingDisk.directory, filename),
 			digest:    "sha256:184725f66890632c7e67ec1713c50aa181c1bc60ee166c9ae13a48f1d60684b0",
-			source:    "https://raw.githubusercontent.com/holyhope/terraform-provider-freebox/refs/heads/resources/remote_file/examples/file-to-download.txt",
+			source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/refs/heads/resources/remote_file/examples/file-to-download.txt",
 		}
 	})
 
