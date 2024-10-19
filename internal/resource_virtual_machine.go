@@ -12,6 +12,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/listvalidator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -298,17 +299,28 @@ func (v *virtualMachineResource) Schema(ctx context.Context, req resource.Schema
 			"cloudinit_userdata": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "When cloudinit is enabled, raw YAML to be passed in the user-data file. Maximum 32767 characters",
+				MarkdownDescription: "When cloudinit is enabled, raw YAML to be passed in the user-data file.",
+				Validators: []validator.String{
+					stringvalidator.LengthAtMost(32767),
+				},
 			},
 			"cloudinit_hostname": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "When cloudinit is enabled, hostname desired for this VM. Max 59 characters",
+				MarkdownDescription: "When cloudinit is enabled, hostname desired for this VM.",
+				Validators: []validator.String{
+					stringvalidator.LengthBetween(1, 59),
+				},
 			},
 			"bind_usb_ports": schema.ListAttribute{
 				Optional:            true,
 				ElementType:         types.StringType,
 				MarkdownDescription: "List of ports that should be bound to this VM. Only one VM can use USB at given time, whether is uses only one or all USB ports. The list of system USB ports is available in VmSystemInfo. For example: `usb-external-type-a`, `usb-external-type-c`",
+				Validators: []validator.List{
+					listvalidator.ValueStringsAre(
+						stringvalidator.LengthAtLeast(1),
+					),
+				},
 			},
 			"timeouts": schema.SingleNestedAttribute{
 				MarkdownDescription: "Timeouts for various operations expressed as strings such as `30s` or `2h45m` where valid time units are `s` (seconds), `m` (minutes) and `h` (hours)",
