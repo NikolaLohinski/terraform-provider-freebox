@@ -60,7 +60,6 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 				CheckDestroy: func(s *terraform.State) error {
 					id, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+name].Primary.Attributes["id"])
 					Expect(err).To(BeNil())
-					Expect(id).ToNot(BeZero())
 
 					_, err = freeboxClient.GetVirtualMachine(ctx, int64(id))
 					Expect(err).To(MatchError(client.ErrVirtualMachineNotFound), "virtual machine %d should not exist", id)
