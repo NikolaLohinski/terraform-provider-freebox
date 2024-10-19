@@ -461,6 +461,10 @@ func (v *virtualMachineResource) Create(ctx context.Context, req resource.Create
 		resp.Diagnostics.Append(d...)
 		return
 	}
+	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
 	var timeouts timeoutsModel
 	resp.Diagnostics.Append(model.Timeouts.As(ctx, &timeouts, basetypes.ObjectAsOptions{})...)
