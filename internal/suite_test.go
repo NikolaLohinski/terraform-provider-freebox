@@ -37,7 +37,7 @@ var (
 	existingDisk file
 )
 
-var _ = BeforeSuite(func (ctx SpecContext) {
+var _ = BeforeSuite(func(ctx SpecContext) {
 	var ok bool
 	endpoint, ok = os.LookupEnv("FREEBOX_ENDPOINT")
 	if !ok {
@@ -100,7 +100,7 @@ var _ = BeforeSuite(func (ctx SpecContext) {
 
 	// Cleanup download task
 	DeferCleanup(func(ctx SpecContext) {
-		Expect(freeboxClient.EraseDownloadTask(ctx, taskID)).To(Succeed())
+		Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
 	})
 
 	// Wait for download task to be done

@@ -20,7 +20,7 @@ import (
 
 var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 	var (
-		exampleFile file
+		exampleFile  file
 		resourceName string
 	)
 
@@ -32,7 +32,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			directory: existingDisk.directory,
 			filepath:  path.Join(root, existingDisk.directory, filename),
 			digest:    "sha256:184725f66890632c7e67ec1713c50aa181c1bc60ee166c9ae13a48f1d60684b0",
-			source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/refs/heads/resources/remote_file/examples/file-to-download.txt",
+			source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/refs/heads/main/examples/file-to-download.txt",
 		}
 	})
 
@@ -418,7 +418,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 						},
 						Check: resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath + ".new"),
+							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath+".new"),
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
 							func(s *terraform.State) error {
 								_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
@@ -431,7 +431,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								Expect(task.Name).To(Equal(exampleFile.filename + ".new"))
 								Expect(task.Status).To(BeEquivalentTo(types.DownloadTaskStatusDone))
 
-								fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath + ".new")
+								fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath+".new")
 								Expect(err).To(BeNil())
 								Expect(fileInfo.Name).To(Equal(exampleFile.filename + ".new"))
 								Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
@@ -451,7 +451,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 					_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 					Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
 
-					_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath + ".new")
+					_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath+".new")
 					Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath+".new")
 
 					return nil
@@ -567,7 +567,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
 
-						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath + ".new")
+						_, err = freeboxClient.GetFileInfo(ctx, exampleFile.filepath+".new")
 						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath+".new")
 
 						return nil
@@ -583,8 +583,8 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
 				DownloadDirectory: path.Join(root, exampleFile.directory),
 				DownloadURLs:      []string{exampleFile.source},
-				Filename: 		   exampleFile.filename,
-				Hash: 		       exampleFile.digest,
+				Filename:          exampleFile.filename,
+				Hash:              exampleFile.digest,
 			})
 			Expect(err).To(BeNil())
 			Expect(taskID).ToNot(BeZero())
