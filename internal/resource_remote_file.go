@@ -256,7 +256,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 			},
 			"source_url": schema.StringAttribute{
-				MarkdownDescription: "VM ethernet interface MAC address",
+				MarkdownDescription: "The URL of the file to download",
 				Required:            true,
 				Validators: []validator.String{
 					&sourceURLValidator{},
