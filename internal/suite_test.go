@@ -114,6 +114,13 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	}))
 })
 
+var _ = AfterEach(func(ctx SpecContext) {
+	By("Ensure the file still exists", func() {
+		_, err := freeboxClient.GetFile(ctx, existingDisk.filepath)
+		Expect(err).To(BeNil())
+	})
+})
+
 func Must[T interface{}](r T, err error) T {
 	if err != nil {
 		panic(err)
