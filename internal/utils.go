@@ -2,15 +2,23 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
+	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 	"github.com/nikolalohinski/free-go/client"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
@@ -52,6 +60,30 @@ func (o pollingSpecModel) AttrTypes() map[string]attr.Type {
 		"interval": timetypes.GoDurationType{},
 		"timeout":  timetypes.GoDurationType{},
 	}
+}
+
+func stopAndDeleteFileSystemTask(ctx context.Context, c client.Client, taskID int64) error {
+	errs := make([]error, 0, 2)
+
+	if _, err := c.UpdateFileSystemTask(ctx, taskID, freeboxTypes.FileSytemTaskUpdate{
+		State: freeboxTypes.FileTaskStatePaused,
+	}); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		errs = append(errs, fmt.Errorf("stop file system task: %w", err))
+	}
+
+	if err := c.DeleteFileSystemTask(ctx, taskID); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		errs = append(errs, fmt.Errorf("erase file system task: %w", err))
+	}
+
+	return errors.Join(errs...)
 }
 
 func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) error {
@@ -230,4 +262,79 @@ type errStoppedTask int64
 
 func (e errStoppedTask) Error() string {
 	return fmt.Sprintf("task %d is on pause, please resume it", int64(e))
+}
+
+type taskModel struct {
+	ID   types.Int64  `tfsdk:"id"`
+	Type types.String `tfsdk:"type"`
+}
+
+func (o taskModel) defaults() basetypes.ObjectValue {
+	return basetypes.NewObjectNull(o.AttrTypes())
+}
+
+func (o taskModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"id": schema.Int64Attribute{
+			Computed:            true,
+			MarkdownDescription: "The task ID.",
+			Validators: []validator.Int64{
+				int64validator.AtLeast(0),
+			},
+			PlanModifiers: []planmodifier.Int64{
+				int64planmodifier.UseStateForUnknown(),
+			},
+		},
+		"type": schema.StringAttribute{
+			Computed:            true,
+			MarkdownDescription: "The task type.",
+			Validators: []validator.String{
+				stringvalidator.OneOf(
+					string(TaskTypeDownload),
+					string(TaskTypeFileSystem),
+				),
+			},
+			PlanModifiers: []planmodifier.String{
+				stringplanmodifier.UseStateForUnknown(),
+			},
+		},
+	}
+}
+
+func (o taskModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"id":   types.Int64Type,
+		"type": types.StringType,
+	}
+}
+
+type taskType string
+
+const (
+	TaskTypeDownload    taskType = "download"
+	TaskTypeFileSystem  taskType = "file_system"
+)
+
+func stopAndDeleteTask(ctx context.Context, c client.Client, taskType taskType, taskID int64) error {
+	switch taskType {
+	case TaskTypeFileSystem:
+		return stopAndDeleteFileSystemTask(ctx, c, taskID)
+	case TaskTypeDownload:
+		return stopAndDeleteDownloadTask(ctx, c, taskID)
+	default:
+		return fmt.Errorf("unknown task type: %s", taskType)
+	}
+}
+
+func WaitForTask(ctx context.Context, c client.Client, taskType taskType, taskID int64, polling *pollingSpecModel) (diagnostics diag.Diagnostics) {
+	switch taskType {
+	case TaskTypeFileSystem:
+		return waitForFileSystemTask(ctx, c, taskID, *polling)
+	case TaskTypeDownload:
+		return waitForDownloadTask(ctx, c, taskID, *polling)
+	default:
+		diagnostics.AddError("Unknown task type", fmt.Sprintf("Unknown task type: %s", taskType))
+	}
+
+	return
 }
