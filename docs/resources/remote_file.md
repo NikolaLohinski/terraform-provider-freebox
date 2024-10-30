@@ -30,10 +30,6 @@ output "task_id" {
 - `checksum` (String) Checksum to verify the hash of the downloaded file
 - `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
 
-### Read-Only
-
-- `task_id` (Number) Task identifier
-
 <a id="nestedatt--authentication"></a>
 ### Nested Schema for `authentication`
 
@@ -59,13 +55,14 @@ Optional:
 - `checksum_compute` (Attributes) Checksum compute polling configuration (see [below for nested schema](#nestedatt--polling--checksum_compute))
 - `create` (Attributes) Creation polling configuration (see [below for nested schema](#nestedatt--polling--create))
 - `delete` (Attributes) Deletion polling configuration (see [below for nested schema](#nestedatt--polling--delete))
+- `move` (Attributes) Move polling configuration (see [below for nested schema](#nestedatt--polling--move))
 
 <a id="nestedatt--polling--checksum_compute"></a>
 ### Nested Schema for `polling.checksum_compute`
 
 Optional:
 
-- `interval` (String) The interval at which to poll the resource.
+- `interval` (String) The interval at which to poll.
 - `timeout` (String) The timeout for the operation.
 
 
@@ -74,7 +71,7 @@ Optional:
 
 Optional:
 
-- `interval` (String) The interval at which to poll the resource.
+- `interval` (String) The interval at which to poll.
 - `timeout` (String) The timeout for the operation.
 
 
@@ -83,7 +80,16 @@ Optional:
 
 Optional:
 
-- `interval` (String) The interval at which to poll the resource.
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--move"></a>
+### Nested Schema for `polling.move`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
 - `timeout` (String) The timeout for the operation.
 
 ## Import
