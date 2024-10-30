@@ -89,29 +89,33 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	// Create directory
 	_, err = freeboxClient.CreateDirectory(ctx, root, existingDisk.directory)
 	Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
-	// Download disk
-	taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
-		DownloadURLs:      []string{existingDisk.source},
-		Hash:              existingDisk.digest,
-		DownloadDirectory: root + "/" + existingDisk.directory,
-		Filename:          existingDisk.filename,
-	})
-	Expect(err).To(BeNil())
 
-	// Cleanup download task
-	DeferCleanup(func(ctx SpecContext) {
-		Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
-	})
-
-	// Wait for download task to be done
-	Eventually(func() types.DownloadTask {
-		downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+	if _, err := freeboxClient.GetFileInfo(ctx, existingDisk.filepath); err != nil {
+		Expect(err).To(Equal(client.ErrPathNotFound))
+		// Download disk
+		taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
+			DownloadURLs:      []string{existingDisk.source},
+			Hash:              existingDisk.digest,
+			DownloadDirectory: root + "/" + existingDisk.directory,
+			Filename:          existingDisk.filename,
+		})
 		Expect(err).To(BeNil())
-		return downloadTask
-	}, "5m").Should(MatchFields(IgnoreExtras, Fields{
-		"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
-		"Error":  BeEquivalentTo(freeboxTypes.DownloadTaskErrorNone),
-	}))
+
+		// Cleanup download task
+		DeferCleanup(func(ctx SpecContext) {
+			Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
+		})
+
+		// Wait for download task to be done
+		Eventually(func() types.DownloadTask {
+			downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+			Expect(err).To(BeNil())
+			return downloadTask
+		}, "5m").Should(MatchFields(IgnoreExtras, Fields{
+			"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
+			"Error":  BeEquivalentTo(freeboxTypes.DownloadTaskErrorNone),
+		}))
+	}
 })
 
 var _ = AfterEach(func(ctx SpecContext) {
@@ -135,3 +139,25 @@ type file struct {
 	digest    string
 	source    string
 }
+
+var _ = BeforeEach(func(ctx SpecContext) {
+	dlTasks, err := freeboxClient.ListDownloadTasks(ctx)
+	Expect(err).To(BeNil())
+
+	DeferCleanup(func(ctx SpecContext, oldTasks []types.DownloadTask) {
+		newTasks, err := freeboxClient.ListDownloadTasks(ctx)
+		Expect(err).To(BeNil())
+
+		Expect(newTasks).To(BeEquivalentTo(oldTasks), "Download tasks should be the same before and after test")
+	}, dlTasks)
+
+	fsTasks, err := freeboxClient.ListFileSystemTasks(ctx)
+	Expect(err).To(BeNil())
+
+	DeferCleanup(func(ctx SpecContext, oldTasks []types.FileSystemTask) {
+		newTasks, err := freeboxClient.ListFileSystemTasks(ctx)
+		Expect(err).To(BeNil())
+
+		Expect(newTasks).To(BeEquivalentTo(oldTasks), "File system tasks should be the same before and after test")
+	}, fsTasks)
+})

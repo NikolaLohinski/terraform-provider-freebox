@@ -2,68 +2,25 @@ package internal
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
-	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
-	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
-	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
-	"github.com/hashicorp/terraform-plugin-framework/types"
-	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
+	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/nikolalohinski/free-go/client"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
+	"github.com/nikolalohinski/terraform-provider-freebox/internal/models"
+	providerdata "github.com/nikolalohinski/terraform-provider-freebox/internal/provider_data"
 )
-
-type pollingSpecModel struct {
-	Interval timetypes.GoDuration `tfsdk:"interval"`
-	Timeout  timetypes.GoDuration `tfsdk:"timeout"`
-}
-
-func (o pollingSpecModel) defaults() basetypes.ObjectValue {
-	return basetypes.NewObjectValueMust(pollingSpecModel{}.AttrTypes(), map[string]attr.Value{
-		"interval": timetypes.NewGoDurationValueFromStringMust("1s"),
-		"timeout":  timetypes.NewGoDurationValueFromStringMust("1m"),
-	})
-}
-
-func (o pollingSpecModel) ResourceAttributes() map[string]schema.Attribute {
-	return map[string]schema.Attribute{
-		"interval": schema.StringAttribute{
-			Optional:            true,
-			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			MarkdownDescription: "The interval at which to poll the resource.",
-			Default: 		     stringdefault.StaticString(timetypes.NewGoDurationValueFromStringMust("1s").String()),
-		},
-		"timeout": schema.StringAttribute{
-			Optional:            true,
-			Computed:            true,
-			CustomType:          timetypes.GoDurationType{},
-			MarkdownDescription: "The timeout for the operation.",
-			Default: 		     stringdefault.StaticString(timetypes.NewGoDurationValueFromStringMust("1m").String()),
-		},
-	}
-}
-
-func (o pollingSpecModel) AttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"interval": timetypes.GoDurationType{},
-		"timeout":  timetypes.GoDurationType{},
-	}
-}
 
 func stopAndDeleteFileSystemTask(ctx context.Context, c client.Client, taskID int64) error {
 	errs := make([]error, 0, 2)
+
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeFileSystem)
+
+	tflog.Trace(ctx, "Stopping task...")
 
 	if _, err := c.UpdateFileSystemTask(ctx, taskID, freeboxTypes.FileSytemTaskUpdate{
 		State: freeboxTypes.FileTaskStatePaused,
@@ -74,6 +31,8 @@ func stopAndDeleteFileSystemTask(ctx context.Context, c client.Client, taskID in
 
 		errs = append(errs, fmt.Errorf("stop file system task: %w", err))
 	}
+
+	tflog.Trace(ctx, "Deleting task...")
 
 	if err := c.DeleteFileSystemTask(ctx, taskID); err != nil {
 		if errors.Is(err, client.ErrTaskNotFound) {
@@ -89,6 +48,11 @@ func stopAndDeleteFileSystemTask(ctx context.Context, c client.Client, taskID in
 func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) error {
 	errs := make([]error, 0, 2)
 
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeFileSystem)
+
+	tflog.Trace(ctx, "Stopping task...")
+
 	if err := c.UpdateDownloadTask(ctx, taskID, freeboxTypes.DownloadTaskUpdate{
 		Status: freeboxTypes.DownloadTaskStatusStopped,
 	}); err != nil {
@@ -99,25 +63,27 @@ func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int6
 		errs = append(errs, fmt.Errorf("stop download task: %w", err))
 	}
 
-	if err := c.EraseDownloadTask(ctx, taskID); err != nil {
+	tflog.Trace(ctx, "Deleting task...")
+
+	if err := c.DeleteDownloadTask(ctx, taskID); err != nil {
 		if errors.Is(err, client.ErrTaskNotFound) {
 			return nil
 		}
 
-		errs = append(errs, fmt.Errorf("erase download task: %w", err))
+		errs = append(errs, fmt.Errorf("delete download task: %w", err))
 	}
 
 	return errors.Join(errs...)
 }
 
-func deleteFilesIfExist(ctx context.Context, c client.Client, polling pollingSpecModel, paths ...string) (diagnostics diag.Diagnostics) {
+func deleteFilesIfExist(ctx context.Context, state providerdata.Setter, c client.Client, polling models.Polling, paths ...string) (diagnostics diag.Diagnostics) {
 	filesToDelete := make([]string, 0, len(paths))
 
 	for _, path := range paths {
 		_, err := c.GetFileInfo(ctx, path)
 		if err != nil {
 			if !errors.Is(err, client.ErrPathNotFound) {
-				diagnostics.AddError("Failed to get file info", err.Error())
+				diagnostics.AddError("Failed to get file info", fmt.Sprintf("Path: %s, Error: %s", path, err.Error()))
 			}
 
 			continue
@@ -134,9 +100,18 @@ func deleteFilesIfExist(ctx context.Context, c client.Client, polling pollingSpe
 		return nil
 	}
 
+	tflog.Debug(ctx, "Deleting files...", map[string]interface{}{
+		"files": filesToDelete,
+	})
+
 	task, err := c.RemoveFiles(ctx, filesToDelete)
 	if err != nil {
-		diagnostics.AddError("Failed to remove files", err.Error())
+		diagnostics.AddError(fmt.Sprintf("Failed to remove %d files", len(filesToDelete)), fmt.Sprintf("Files: %v, Error: %s", filesToDelete, err.Error()))
+		return
+	}
+
+	if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeFileSystem, task.ID); diags.HasError() {
+		diagnostics.Append(diags...)
 		return
 	}
 
@@ -145,20 +120,23 @@ func deleteFilesIfExist(ctx context.Context, c client.Client, polling pollingSpe
 		return
 	}
 
+	if err := stopAndDeleteFileSystemTask(ctx, c, task.ID); err != nil {
+		diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task: %d, Action: %s, Error: %s", task.ID, task.Type, err.Error()))
+		return
+	}
+
+	if diags := providerdata.UnsetCurrentTask(ctx, state); diags.HasError() {
+		diagnostics.Append(diags...)
+	}
+
 	return
 }
 
-type taskError struct {
-	taskID    int64
-	errorCode string
-}
-
-func (e *taskError) Error() string {
-	return fmt.Sprintf("task %d failed with error code %q", e.taskID, e.errorCode)
-}
-
 // waitForFileSystemTask waits for the system task to complete.
-func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int64, polling pollingSpecModel) (diagnostics diag.Diagnostics) {
+func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int64, polling models.Polling) (diagnostics diag.Diagnostics) {
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeFileSystem)
+
 	interval, diags := polling.Interval.ValueGoDuration()
 	if diags.HasError() {
 		diagnostics.Append(diags...)
@@ -171,47 +149,62 @@ func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int
 		return
 	}
 
+	tflog.Debug(ctx, "Waiting for file system task to complete...", map[string]interface{}{
+		"timeout":  timeout,
+		"interval": interval,
+	})
+
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	var taskType, currentState string
+
 	for {
 		task, taskErr := client.GetFileSystemTask(ctx, taskID)
 		if taskErr != nil {
-			diagnostics.AddError("Failed to get file system task", taskErr.Error())
-			return
-		}
+			tflog.Warn(ctx, "Failed to get file system task. Retrying...", map[string]interface{}{
+				"error": taskErr.Error(),
+			})
+		} else {
+			if taskType == "" {
+				taskType = string(task.Type)
+				ctx = tflog.SetField(ctx, "task.action", taskType)
+			}
 
-		switch task.State {
-		case freeboxTypes.FileTaskStateFailed:
-			diagnostics.AddError("File system task failed", fmt.Sprintf("Task %d failed with code: %s", taskID, task.Error))
-			return
-		case freeboxTypes.FileTaskStateDone:
-			return nil // Done
-		case freeboxTypes.FileTaskStatePaused:
-			diagnostics.AddError("File system task paused", fmt.Sprintf("The file system task %d was paused", taskID))
-			return
-		default:
-			// Nothing to do
+			currentState = string(task.State)
+
+			switch task.State {
+			case freeboxTypes.FileTaskStateFailed:
+				diagnostics.AddError("File system task failed", fmt.Sprintf("Task: %d, Action: %s, Error code: %s", taskID, task.Type, task.Error))
+				return
+			case freeboxTypes.FileTaskStateDone:
+				return nil // Done
+			case freeboxTypes.FileTaskStatePaused:
+				tflog.Info(ctx, "File system task paused, please resume it")
+			default:
+				tflog.Debug(ctx, "File system task not done yet", map[string]interface{}{
+					"task.state": task.State,
+				})
+			}
 		}
 
 		select {
 		case <-ctx.Done():
-			diagnostics.AddError("File system task timeout", ctx.Err().Error())
+			diagnostics.AddError("File system task did not complete in time", fmt.Sprintf("Task: %d, Action: %s, State: %s, Error: %v", taskID, taskType, currentState, ctx.Err()))
 			return
 		case <-tick.C:
 		}
 	}
 }
 
-const (
-	badHashError = "http_bad_hash"
-)
-
 // waitForDownloadTask waits for the download task to complete.
-func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, polling pollingSpecModel) (diagnostics diag.Diagnostics) {
+func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, polling models.Polling) (diagnostics diag.Diagnostics) {
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeDownload)
+
 	interval, diags := polling.Interval.ValueGoDuration()
 	if diags.HasError() {
 		diagnostics.Append(diags...)
@@ -224,116 +217,70 @@ func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, pol
 		return
 	}
 
+	tflog.Debug(ctx, "Waiting for download task to complete...", map[string]interface{}{
+		"timeout":  timeout,
+		"interval": interval,
+	})
+
 	tick := time.NewTicker(interval)
 	defer tick.Stop()
 
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+
+	var currentStatus string
 
 	for {
 		task, taskErr := c.GetDownloadTask(ctx, taskID)
 		if taskErr != nil {
 			diagnostics.AddError("Failed to get download task", taskErr.Error())
-		}
+		} else {
+			currentStatus = string(task.Status)
 
-		switch task.Status {
-		case freeboxTypes.DownloadTaskStatusError:
-			diagnostics.AddError("Download task failed", fmt.Sprintf("Error code: %s", task.Error))
-			return
-		case freeboxTypes.DownloadTaskStatusDone:
-			return nil // Done
-		case freeboxTypes.DownloadTaskStatusStopped:
-			diagnostics.AddError("Download task stopped", "The download task was stopped")
-			return
-		default:
-			// Nothing to do
+			switch task.Status {
+			case freeboxTypes.DownloadTaskStatusError:
+				diagnostics.AddError("Download task failed", fmt.Sprintf("Task: %d, Error code: %s", taskID, task.Error))
+				return
+			case freeboxTypes.DownloadTaskStatusDone:
+				return nil // Done
+			case freeboxTypes.DownloadTaskStatusStopped:
+				tflog.Info(ctx, "Download task stopped, please resume it")
+			default:
+				tflog.Debug(ctx, "Download task not done yet", map[string]interface{}{
+					"task.status": task.Status,
+				})
+				// Nothing to do
+			}
 		}
 
 		select {
 		case <-ctx.Done():
-			diagnostics.AddError("Download task timeout", ctx.Err().Error())
+			diagnostics.AddError("Download took did not complete in time", fmt.Sprintf("Task: %d, Status: %s, Error: %v", taskID, currentStatus, ctx.Err()))
 			return
 		case <-tick.C:
 		}
 	}
 }
 
-type errStoppedTask int64
-
-func (e errStoppedTask) Error() string {
-	return fmt.Sprintf("task %d is on pause, please resume it", int64(e))
-}
-
-type taskModel struct {
-	ID   types.Int64  `tfsdk:"id"`
-	Type types.String `tfsdk:"type"`
-}
-
-func (o taskModel) defaults() basetypes.ObjectValue {
-	return basetypes.NewObjectNull(o.AttrTypes())
-}
-
-func (o taskModel) ResourceAttributes() map[string]schema.Attribute {
-	return map[string]schema.Attribute{
-		"id": schema.Int64Attribute{
-			Computed:            true,
-			MarkdownDescription: "The task ID.",
-			Validators: []validator.Int64{
-				int64validator.AtLeast(0),
-			},
-			PlanModifiers: []planmodifier.Int64{
-				int64planmodifier.UseStateForUnknown(),
-			},
-		},
-		"type": schema.StringAttribute{
-			Computed:            true,
-			MarkdownDescription: "The task type.",
-			Validators: []validator.String{
-				stringvalidator.OneOf(
-					string(TaskTypeDownload),
-					string(TaskTypeFileSystem),
-				),
-			},
-			PlanModifiers: []planmodifier.String{
-				stringplanmodifier.UseStateForUnknown(),
-			},
-		},
-	}
-}
-
-func (o taskModel) AttrTypes() map[string]attr.Type {
-	return map[string]attr.Type{
-		"id":   types.Int64Type,
-		"type": types.StringType,
-	}
-}
-
-type taskType string
-
-const (
-	TaskTypeDownload    taskType = "download"
-	TaskTypeFileSystem  taskType = "file_system"
-)
-
-func stopAndDeleteTask(ctx context.Context, c client.Client, taskType taskType, taskID int64) error {
+func stopAndDeleteTask(ctx context.Context, c client.Client, taskType models.TaskType, taskID int64) error {
 	switch taskType {
-	case TaskTypeFileSystem:
+	case models.TaskTypeFileSystem:
 		return stopAndDeleteFileSystemTask(ctx, c, taskID)
-	case TaskTypeDownload:
+	case models.TaskTypeDownload:
 		return stopAndDeleteDownloadTask(ctx, c, taskID)
 	default:
 		return fmt.Errorf("unknown task type: %s", taskType)
 	}
 }
 
-func WaitForTask(ctx context.Context, c client.Client, taskType taskType, taskID int64, polling *pollingSpecModel) (diagnostics diag.Diagnostics) {
+func WaitForTask(ctx context.Context, c client.Client, taskType models.TaskType, taskID int64, polling *models.Polling) (diagnostics diag.Diagnostics) {
 	switch taskType {
-	case TaskTypeFileSystem:
+	case models.TaskTypeFileSystem:
 		return waitForFileSystemTask(ctx, c, taskID, *polling)
-	case TaskTypeDownload:
+	case models.TaskTypeDownload:
 		return waitForDownloadTask(ctx, c, taskID, *polling)
 	default:
-		diagnostics.AddError("Unknown task type", fmt.Sprintf("Unknown task type: %s", taskType))
+		diagnostics.AddError("Unknown task type", fmt.Sprintf("Task: %d, Type: %s", taskID, taskType))
 	}
 
 	return
