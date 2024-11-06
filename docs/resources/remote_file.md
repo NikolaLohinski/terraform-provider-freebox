@@ -1,14 +1,14 @@
 # `freebox_remote_file` (Resource)
 
-The resource downloads a file from a URL and stores it on the Freebox.
+This resource downloads a file from a URL and stores it on the Freebox.
 
 ## Example
 
 ```terraform
 resource "freebox_remote_file" "example" {
-  source_url = "https://example.com/file.txt"
+  source_url       = "https://example.com/file.txt"
   destination_path = "/Freebox/VMs/file.txt"
-  checksum = "sha256:0a0a9f2a6772942557ab5347d9b0e6b8"
+  checksum         = "sha256:0a0a9f2a6772942557ab5347d9b0e6b8"
 }
 
 output "task_id" {
@@ -22,7 +22,7 @@ output "task_id" {
 ### Required
 
 - `destination_path` (String) Path to the file on the Freebox
-- `source_url` (String) VM ethernet interface MAC address
+- `source_url` (String) The URL of the file to download
 
 ### Optional
 

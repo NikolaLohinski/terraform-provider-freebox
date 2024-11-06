@@ -9,6 +9,7 @@
 - [freebox](./provider.md)
   - [Resources]()
     - [freebox_virtual_machine](./resources/virtual_machine.md)
+    - [freebox_remote_file](./resources/remote_file.md)
   - [Data Sources]()
     - [freebox_api_version](./data-sources/api_version.md)
 
