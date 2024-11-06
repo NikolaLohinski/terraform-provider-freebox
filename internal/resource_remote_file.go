@@ -669,7 +669,7 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 
 		tflog.Debug(ctx, "Moving the file...")
 
-		task, err := v.client.MoveFile(ctx, oldModel.DestinationPath.ValueString(), newModel.DestinationPath.ValueString(), freeboxTypes.FileMoveModeOverwrite)
+		task, err := v.client.MoveFiles(ctx, []string{oldModel.DestinationPath.ValueString()}, newModel.DestinationPath.ValueString(), freeboxTypes.FileMoveModeOverwrite)
 		if err != nil {
 			resp.Diagnostics.AddError("Failed to move file", fmt.Sprintf("From: %s, To: %s, Error: %s", oldModel.DestinationPath.ValueString(), newModel.DestinationPath.ValueString(), err.Error()))
 			return
