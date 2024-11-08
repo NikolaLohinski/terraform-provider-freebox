@@ -53,14 +53,14 @@ func (a *VirtualDiskDataSource) Schema(ctx context.Context, req datasource.Schem
 			},
 			"actual_size": schema.Int64Attribute{
 				Computed:           true,
-				MarkdownDescription: "Space used by virtual image on disk. This is how much filesystem space is consumed on the box.",
+				MarkdownDescription: "Space in bytes used by the virtual image on disk. This is how much filesystem space is consumed on the box.",
 				Validators: []validator.Int64{
 					models.DiskSizeValidator(),
 				},
 			},
 			"virtual_size": schema.Int64Attribute{
 				Computed:            true,
-				MarkdownDescription: "Size of virtual disk. This is the size the disk will appear inside the VM.",
+				MarkdownDescription: "Size in bytes of the virtual disk. This is the size the disk will appear inside the VM.",
 				Validators: []validator.Int64{
 					models.VirtualDiskSizeValidator(),
 				},

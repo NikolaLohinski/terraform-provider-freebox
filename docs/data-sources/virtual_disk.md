@@ -30,6 +30,6 @@ output "sizes" {
 
 ### Read-Only
 
-- `actual_size` (Number) Space used by virtual image on disk. This is how much filesystem space is consumed on the box.
+- `actual_size` (Number) Space in bytes used by the virtual image on disk. This is how much filesystem space is consumed on the box.
 - `type` (String) Type of virtual disk
-- `virtual_size` (Number) Size of virtual disk. This is the size the disk will appear inside the VM.
+- `virtual_size` (Number) Size in bytes of the virtual disk. This is the size the disk will appear inside the VM.
