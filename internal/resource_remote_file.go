@@ -459,13 +459,6 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 		return
 	}
 
-	var polling remoteFilePollingModel
-
-	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
-		resp.Diagnostics.Append(diags...)
-		return
-	}
-
 	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
 	if err != nil {
 		if errors.Is(err, client.ErrPathNotFound) {
