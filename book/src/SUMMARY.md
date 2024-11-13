@@ -12,6 +12,7 @@
     - [freebox_remote_file](./resources/remote_file.md)
   - [Data Sources]()
     - [freebox_api_version](./data-sources/api_version.md)
+    - [freebox_virtual_disk](./data-sources/virtual_disk.md)
 
 # Development
 
