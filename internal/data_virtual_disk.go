@@ -35,7 +35,7 @@ func (a *VirtualDiskDataSource) Metadata(ctx context.Context, req datasource.Met
 
 func (a *VirtualDiskDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Discovery of the Freebox over HTTP(S)",
+		MarkdownDescription: "Get information about a virtual disk.",
 		Attributes: map[string]schema.Attribute{
 			"path": schema.StringAttribute{
 				Required:            true,
@@ -92,11 +92,13 @@ func (a *VirtualDiskDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	resp.Diagnostics.Append(resp.State.Get(ctx, &data)...)
 
-	diskInfo, err := a.client.GetVirtualDiskInfo(ctx, data.Path.ValueString())
+	path := data.Path.ValueString()
+
+	diskInfo, err := a.client.GetVirtualDiskInfo(ctx, path)
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to get virtual disk info",
-			err.Error(),
+			fmt.Sprintf("Failed to get virtual disk info at %q: %s", path, err),
 		)
 		return
 	}
