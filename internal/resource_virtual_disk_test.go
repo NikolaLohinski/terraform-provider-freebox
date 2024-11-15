@@ -5,6 +5,7 @@ import (
 	"path"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/nikolalohinski/free-go/client"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
@@ -100,6 +101,10 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 
 		Context("when the file already exists", func() {
 			It("should fail", func(ctx SpecContext) {
+				errStr := (&client.APIError{
+					Code:    "exists",
+				}).Error()
+
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
@@ -111,9 +116,8 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 									virtual_size = ` + strconv.Itoa(originalvirtualSize) + `
 								}
 							`,
-							ExpectError: regexp.MustCompile(regexp.QuoteMeta(client.APIError{
-								Code:    "exists",
-							}.Error())),
+							// Replace spaces with \s+ to match fixed-size error messages
+							ExpectError: regexp.MustCompile(strings.ReplaceAll(regexp.QuoteMeta(errStr), " ", `\s+`)),
 						},
 					},
 				})
