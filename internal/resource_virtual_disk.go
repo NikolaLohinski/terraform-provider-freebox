@@ -41,7 +41,7 @@ type virtualDiskResource struct {
 // virtualDiskModel describes the resource data model.
 type virtualDiskModel struct {
 	// Path is the path to the virtual disk.
-    Path types.String `tfsdk:"path"`
+	Path types.String `tfsdk:"path"`
 	// Type is the type of virtual disk.
 	Type types.String `tfsdk:"type"`
 	// VirtualSize is the size of virtual disk. This is the size the disk will appear inside the VM.
@@ -76,7 +76,7 @@ func (v *virtualDiskModel) toCreatePayload() (payload freeboxTypes.VirtualDisksC
 func (v *virtualDiskModel) toResizePayload() (payload freeboxTypes.VirtualDisksResizePayload) {
 	payload.DiskPath = freeboxTypes.Base64Path(v.Path.ValueString())
 	payload.NewSize = v.VirtualSize.ValueInt64()
-	payload.ShrinkAllow = true  // Shrink is always allowed
+	payload.ShrinkAllow = true // Shrink is always allowed
 
 	return
 }
@@ -85,7 +85,7 @@ type virtualDiskPollingModel struct {
 	// Delete is the polling configuration for delete operation.
 	Delete types.Object `tfsdk:"delete"`
 	// Move is the polling configuration for move operation.
-	Move  types.Object `tfsdk:"move"`
+	Move types.Object `tfsdk:"move"`
 }
 
 func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
@@ -127,11 +127,11 @@ func (v *virtualDiskResource) Metadata(ctx context.Context, req resource.Metadat
 
 func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
+		MarkdownDescription: "Manages a virtual disk image within a Freebox",
 		Attributes: map[string]schema.Attribute{
 			"path": schema.StringAttribute{
 				MarkdownDescription: "Path to the virtual disk on the Freebox",
-				Required: 		     true,
+				Required:            true,
 				Validators: []validator.String{
 					models.FilePathValidator(),
 				},
@@ -161,7 +161,7 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 				},
 			},
 			"size_on_disk": schema.Int64Attribute{
-				Computed:           true,
+				Computed:            true,
 				MarkdownDescription: "Space in bytes used by virtual image on the hard drive. This is how much filesystem space is consumed on the box.",
 				Validators: []validator.Int64{
 					models.DiskSizeValidator(),
@@ -218,7 +218,7 @@ func (v *virtualDiskResource) Create(ctx context.Context, req resource.CreateReq
 
 	model.populateDefaults()
 
-	defer func () {
+	defer func() {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}()
 
@@ -521,7 +521,7 @@ func (v *virtualDiskResource) ImportState(ctx context.Context, req resource.Impo
 
 	disk, err := v.client.GetVirtualDiskInfo(ctx, req.ID)
 	if err != nil {
-		resp.Diagnostics.AddError("Failed to get virtual disk info",err.Error())
+		resp.Diagnostics.AddError("Failed to get virtual disk info", err.Error())
 		return
 	}
 

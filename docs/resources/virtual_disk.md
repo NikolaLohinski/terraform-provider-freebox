@@ -1,6 +1,6 @@
 # `freebox_virtual_disk` (Resource)
 
-Manages a virtual machine instance within a Freebox box. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details
+Manages a virtual disk image within a Freebox
 
 ## Example
 

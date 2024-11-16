@@ -1,6 +1,6 @@
 # `freebox_virtual_disk` (Data Source)
 
-Discovery of the Freebox over HTTP(S)
+Get information about a virtual disk.
 
 ## Example
 
