@@ -21,6 +21,11 @@ type downloadURLValidator struct{
 
 
 func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// The null case should be handled by required attribute or conflicts with other validators.
+	if req.ConfigValue.IsNull() {
+		return
+	}
+
 	u, err := url.Parse(req.ConfigValue.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid URL", err.Error())
