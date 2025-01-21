@@ -28,9 +28,14 @@ type checksumValidator struct{
 }
 
 func (s *checksumValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// The null case should be handled by required attribute or conflicts with other validators.
+	if req.ConfigValue.IsNull() {
+		return
+	}
+
 	parts := strings.SplitN(req.ConfigValue.ValueString(), ":", 2)
 	if len(parts) != 2 {
-		// Use the default hash function
+		resp.Diagnostics.AddError("Invalid checksum", "Checksum must be in the format <method>:<value>")
 		return
 	}
 

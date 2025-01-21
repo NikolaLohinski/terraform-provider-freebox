@@ -14,6 +14,11 @@ func FilePathValidator() validator.String {
 type filePathValidator struct{}
 
 func (s *filePathValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
+	// The null case should be handled by required attribute or conflicts with other validators.
+	if req.ConfigValue.IsNull() {
+		return
+	}
+
 	stringvalidator.LengthAtLeast(1).ValidateString(ctx, req, resp)
 
 	return
