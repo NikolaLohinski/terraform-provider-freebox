@@ -40,9 +40,9 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 	BeforeEach(func(ctx SpecContext) {
 		resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
 		exampleDisk = diskSpec{
-			filepath: path.Join(root, existingDisk.directory, resourceName + ".raw"),
+			filepath: path.Join(root, existingDisk.directory, resourceName+".raw"),
 			diskType: freeboxTypes.RawDisk,
-			size:    originalvirtualSize,
+			size:     originalvirtualSize,
 		}
 	})
 
@@ -102,7 +102,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		Context("when the file already exists", func() {
 			It("should fail", func(ctx SpecContext) {
 				errStr := (&client.APIError{
-					Code:    "exists",
+					Code: "exists",
 				}).Error()
 
 				resource.UnitTest(GinkgoT(), resource.TestCase{
@@ -243,92 +243,92 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 			})
 
 			Context("the size remains unchanged", func() {
-					Context("the path changes", func() {
-						BeforeEach(func(ctx SpecContext) {
-							newDisk.filepath = exampleDisk.filepath + ".new"
-						})
-						It("creates, recreates and deletes a file", func(ctx SpecContext) {
-							resource.UnitTest(GinkgoT(), resource.TestCase{
-								ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-								Steps: []resource.TestStep{
-									{
-										Config: config,
-										Check: resource.ComposeAggregateTestCheckFunc(
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(exampleDisk.size)),
-											checkDiskStateFunc(ctx, resourceName, exampleDisk.filepath),
-										),
-									},
-									{
-										Config: newConfig,
-										ConfigPlanChecks: resource.ConfigPlanChecks{
-											PreApply: []plancheck.PlanCheck{
-												plancheck.ExpectResourceAction("freebox_virtual_disk."+resourceName, plancheck.ResourceActionReplace),
-											},
-										},
-										Check: resource.ComposeAggregateTestCheckFunc(
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", newDisk.filepath),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", newDisk.diskType),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(newDisk.size)),
-											checkDiskStateFunc(ctx, resourceName, newDisk.filepath),
-										),
-									},
-								},
-								CheckDestroy: func(s *terraform.State) error {
-									_, err := freeboxClient.GetFileInfo(ctx, exampleDisk.filepath)
-									Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleDisk.filepath)
-
-									_, err = freeboxClient.GetFileInfo(ctx, newDisk.filepath)
-									Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", newDisk.filepath)
-
-									return nil
-								},
-							})
-						})
+				Context("the path changes", func() {
+					BeforeEach(func(ctx SpecContext) {
+						newDisk.filepath = exampleDisk.filepath + ".new"
 					})
-					Context("the path remains unchanged", func() {
-						It("should creates, recreates and deletes a file", func(ctx SpecContext) {
-							resource.UnitTest(GinkgoT(), resource.TestCase{
-								ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-								Steps: []resource.TestStep{
-									{
-										Config: config,
-										Check: resource.ComposeAggregateTestCheckFunc(
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(exampleDisk.size)),
-											checkDiskStateFunc(ctx, resourceName, exampleDisk.filepath),
-										),
-									},
-									{
-										Config: newConfig,
-										ConfigPlanChecks: resource.ConfigPlanChecks{
-											PreApply: []plancheck.PlanCheck{
-												plancheck.ExpectResourceAction("freebox_virtual_disk."+resourceName, plancheck.ResourceActionReplace),
-											},
+					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+						resource.UnitTest(GinkgoT(), resource.TestCase{
+							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+							Steps: []resource.TestStep{
+								{
+									Config: config,
+									Check: resource.ComposeAggregateTestCheckFunc(
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(exampleDisk.size)),
+										checkDiskStateFunc(ctx, resourceName, exampleDisk.filepath),
+									),
+								},
+								{
+									Config: newConfig,
+									ConfigPlanChecks: resource.ConfigPlanChecks{
+										PreApply: []plancheck.PlanCheck{
+											plancheck.ExpectResourceAction("freebox_virtual_disk."+resourceName, plancheck.ResourceActionReplace),
 										},
-										Check: resource.ComposeAggregateTestCheckFunc(
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", newDisk.filepath),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", newDisk.diskType),
-											resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(newDisk.size)),
-											checkDiskStateFunc(ctx, resourceName, newDisk.filepath),
-										),
 									},
+									Check: resource.ComposeAggregateTestCheckFunc(
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", newDisk.filepath),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", newDisk.diskType),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(newDisk.size)),
+										checkDiskStateFunc(ctx, resourceName, newDisk.filepath),
+									),
 								},
-								CheckDestroy: func(s *terraform.State) error {
-									_, err := freeboxClient.GetFileInfo(ctx, exampleDisk.filepath)
-									Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleDisk.filepath)
+							},
+							CheckDestroy: func(s *terraform.State) error {
+								_, err := freeboxClient.GetFileInfo(ctx, exampleDisk.filepath)
+								Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleDisk.filepath)
 
-									_, err = freeboxClient.GetFileInfo(ctx, newDisk.filepath)
-									Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", newDisk.filepath)
+								_, err = freeboxClient.GetFileInfo(ctx, newDisk.filepath)
+								Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", newDisk.filepath)
 
-									return nil
-								},
-							})
+								return nil
+							},
 						})
 					})
 				})
+				Context("the path remains unchanged", func() {
+					It("should creates, recreates and deletes a file", func(ctx SpecContext) {
+						resource.UnitTest(GinkgoT(), resource.TestCase{
+							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+							Steps: []resource.TestStep{
+								{
+									Config: config,
+									Check: resource.ComposeAggregateTestCheckFunc(
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(exampleDisk.size)),
+										checkDiskStateFunc(ctx, resourceName, exampleDisk.filepath),
+									),
+								},
+								{
+									Config: newConfig,
+									ConfigPlanChecks: resource.ConfigPlanChecks{
+										PreApply: []plancheck.PlanCheck{
+											plancheck.ExpectResourceAction("freebox_virtual_disk."+resourceName, plancheck.ResourceActionReplace),
+										},
+									},
+									Check: resource.ComposeAggregateTestCheckFunc(
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", newDisk.filepath),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", newDisk.diskType),
+										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(newDisk.size)),
+										checkDiskStateFunc(ctx, resourceName, newDisk.filepath),
+									),
+								},
+							},
+							CheckDestroy: func(s *terraform.State) error {
+								_, err := freeboxClient.GetFileInfo(ctx, exampleDisk.filepath)
+								Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleDisk.filepath)
+
+								_, err = freeboxClient.GetFileInfo(ctx, newDisk.filepath)
+								Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", newDisk.filepath)
+
+								return nil
+							},
+						})
+					})
+				})
+			})
 		})
 
 		Context("the type remains unchanged", func() {

@@ -6,7 +6,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 )
 
-
 type Setter interface {
 	SetKey(ctx context.Context, key string, value []byte) diag.Diagnostics
 }
