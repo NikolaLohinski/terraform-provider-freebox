@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -57,6 +58,11 @@ func (v *virtualDiskModel) populateFromVirtualDiskInfo(fileInfo freeboxTypes.Vir
 	v.Type = basetypes.NewStringValue(string(fileInfo.Type))
 	v.VirtualSize = basetypes.NewInt64Value(fileInfo.VirtualSize)
 	v.SizeOnDisk = basetypes.NewInt64Value(fileInfo.ActualSize)
+}
+
+func (v *virtualDiskModel) populateFromFileInfo(fileInfo freeboxTypes.FileInfo) {
+	v.Path = basetypes.NewStringValue(string(fileInfo.Path))
+	v.SizeOnDisk = basetypes.NewInt64Value(int64(fileInfo.SizeBytes))
 }
 
 func (v *virtualDiskModel) populateDefaults() {
@@ -251,17 +257,54 @@ func (v *virtualDiskResource) Read(ctx context.Context, req resource.ReadRequest
 
 	model.populateDefaults()
 
+	var removed bool
+
 	defer func() {
-		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+		if !removed {
+			resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
+		}
 	}()
 
-	diskInfo, err := v.client.GetVirtualDiskInfo(ctx, model.Path.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to get disk info", fmt.Sprintf("Path: %s, Error: %s", model.Path.ValueString(), err.Error()))
+	diskPath := model.Path.ValueString()
+
+	diskInfo, err := v.client.GetVirtualDiskInfo(ctx, diskPath)
+	if err == nil {
+		model.populateFromVirtualDiskInfo(diskInfo)
 		return
 	}
 
-	model.populateFromVirtualDiskInfo(diskInfo)
+	tflog.Info(ctx, "Failed to get virtual disk info", map[string]interface{}{
+		"error": err,
+	})
+
+	target := new(client.APIError)
+	if errors.As(err, &target) {
+		switch target.Code {
+		case freeboxTypes.DiskErrorNotFound:
+			tflog.Debug(ctx, "Virtual disk is not found, removing the resource form state", map[string]interface{}{
+				"error": err,
+			})
+
+			removed = true
+			resp.State.RemoveResource(ctx)
+			return
+		case freeboxTypes.DiskErrorInfo:
+			resp.Diagnostics.AddWarning("Failed to get virtual disk, It is probably in use", fmt.Sprintf("Path: %s, Error: %s", diskPath, err.Error()))
+			return
+		default:
+			tflog.Warn(ctx, "Failed to get disk info", map[string]interface{}{
+				"error": err,
+			})
+
+			fileInfo, err := v.client.GetFileInfo(ctx, diskPath)
+			if err != nil {
+				resp.Diagnostics.AddError("Failed to get file info", fmt.Sprintf("Path: %s, Error: %s", diskPath, err.Error()))
+				return
+			}
+
+			model.populateFromFileInfo(fileInfo)
+		}
+	}
 }
 
 func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
@@ -419,6 +462,11 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 	}
 
 	if oldModel.VirtualSize.ValueInt64() != newModel.VirtualSize.ValueInt64() { // Resize the disk
+		tflog.Info(ctx, "Resizing virtual disk", map[string]interface{}{
+			"old_size": oldModel.VirtualSize.ValueInt64(),
+			"new_size": newModel.VirtualSize.ValueInt64(),
+		})
+
 		taskID, err := v.client.ResizeVirtualDisk(ctx, newModel.toResizePayload())
 		if err != nil {
 			resp.Diagnostics.AddError("Failed to add resize task", fmt.Sprintf("Path: %s, Error: %s", newModel.Path.ValueString(), err.Error()))
