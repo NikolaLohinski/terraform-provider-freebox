@@ -10,7 +10,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-
 type Polling struct {
 	Interval timetypes.GoDuration `tfsdk:"interval"`
 	Timeout  timetypes.GoDuration `tfsdk:"timeout"`
@@ -30,14 +29,14 @@ func PollingSpecModelResourceAttributes(interval, timeout time.Duration) map[str
 			Computed:            true,
 			CustomType:          timetypes.GoDurationType{},
 			MarkdownDescription: "The interval at which to poll.",
-			Default: 		     stringdefault.StaticString(timetypes.NewGoDurationValue(interval).String()),
+			Default:             stringdefault.StaticString(timetypes.NewGoDurationValue(interval).String()),
 		},
 		"timeout": schema.StringAttribute{
 			Optional:            true,
 			Computed:            true,
 			CustomType:          timetypes.GoDurationType{},
 			MarkdownDescription: "The timeout for the operation.",
-			Default: 		     stringdefault.StaticString(timetypes.NewGoDurationValue(timeout).String()),
+			Default:             stringdefault.StaticString(timetypes.NewGoDurationValue(timeout).String()),
 		},
 	}
 }

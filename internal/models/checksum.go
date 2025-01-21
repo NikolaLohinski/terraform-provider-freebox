@@ -22,7 +22,7 @@ func ChecksumValidator() validator.String {
 	}
 }
 
-type checksumValidator struct{
+type checksumValidator struct {
 	methodValidator validator.String
 	valueValidator  validator.String
 }
@@ -40,16 +40,16 @@ func (s *checksumValidator) ValidateString(ctx context.Context, req validator.St
 	}
 
 	s.methodValidator.ValidateString(ctx, validator.StringRequest{
-		Path: req.Path.AtTupleIndex(0),
+		Path:           req.Path.AtTupleIndex(0),
 		PathExpression: req.PathExpression.AtSetValue(basetypes.NewStringValue(parts[0])),
-		ConfigValue: basetypes.NewStringValue(parts[0]),
-		Config: req.Config,
+		ConfigValue:    basetypes.NewStringValue(parts[0]),
+		Config:         req.Config,
 	}, resp)
 	s.valueValidator.ValidateString(ctx, validator.StringRequest{
-		Path: req.Path.AtTupleIndex(1),
+		Path:           req.Path.AtTupleIndex(1),
 		PathExpression: req.PathExpression.AtSetValue(basetypes.NewStringValue(parts[1])),
-		ConfigValue: basetypes.NewStringValue(parts[1]),
-		Config: req.Config,
+		ConfigValue:    basetypes.NewStringValue(parts[1]),
+		Config:         req.Config,
 	}, resp)
 
 	return

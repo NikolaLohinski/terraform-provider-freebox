@@ -15,10 +15,9 @@ func DownloadURLValidator() validator.String {
 	}
 }
 
-type downloadURLValidator struct{
+type downloadURLValidator struct {
 	schemeValidator validator.String
 }
-
 
 func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
 	// The null case should be handled by required attribute or conflicts with other validators.
@@ -33,10 +32,10 @@ func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator
 	}
 
 	s.schemeValidator.ValidateString(ctx, validator.StringRequest{
-		Path: req.Path.AtName("scheme"),
+		Path:           req.Path.AtName("scheme"),
 		PathExpression: req.PathExpression.AtName("scheme"),
-		ConfigValue: basetypes.NewStringValue(u.Scheme),
-		Config: req.Config,
+		ConfigValue:    basetypes.NewStringValue(u.Scheme),
+		Config:         req.Config,
 	}, resp)
 }
 
