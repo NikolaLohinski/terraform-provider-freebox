@@ -462,9 +462,67 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 	fileInfo, err := v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
 	if err != nil {
 		if errors.Is(err, client.ErrPathNotFound) {
-			// TODO wait for the previous task to complete and continue
-			resp.Diagnostics.AddError("File not found", fmt.Sprintf("Path: %s", model.DestinationPath.ValueString()))
-			return
+			tflog.Info(ctx, "File not found", map[string]interface{}{
+				"path":  model.DestinationPath.ValueString(),
+				"error": err.Error(),
+			})
+
+			task, diags := providerdata.GetCurrentTask(ctx, resp.Private)
+			if diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+			if task == nil { // File is not found and no task is running
+				tflog.Debug(ctx, "No task is running")
+				resp.State.RemoveResource(ctx)
+				return
+			}
+
+			var pollingModel remoteFilePollingModel
+			if diags := model.Polling.As(ctx, &pollingModel, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			var taskPolling types.Object = types.ObjectNull(models.Polling{}.AttrTypes())
+			switch models.TaskType(task.Type.ValueString()) {
+			case models.TaskTypeDownload:
+				taskPolling = pollingModel.Create
+			case models.TaskTypeFileSystem:
+				taskPolling = pollingModel.Delete
+			default:
+				resp.Diagnostics.AddWarning("Unknown task type", fmt.Sprintf("Task %q ID: %d", task.Type.ValueString(), task.ID.ValueInt64()))
+				providerdata.UnsetCurrentTask(ctx, resp.Private)
+				resp.State.RemoveResource(ctx)
+				return
+			}
+
+			var polling models.Polling
+			if diags := taskPolling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			tflog.Info(ctx, "Waiting for the previous download task to complete", map[string]interface{}{
+				"task.id": task.ID.ValueInt64(),
+			})
+
+			taskType := models.TaskType(task.Type.ValueString())
+
+			if diags := WaitForTask(ctx, v.client, taskType, task.ID.ValueInt64(), &polling); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			tflog.Debug(ctx, "Getting the file info...", map[string]interface{}{
+				"path": model.DestinationPath.ValueString(),
+			})
+
+			fileInfo, err = v.client.GetFileInfo(ctx, model.DestinationPath.ValueString())
+			if err != nil && errors.Is(err, client.ErrPathNotFound) {
+				resp.State.RemoveResource(ctx)
+				return
+			}
 		} else {
 			resp.Diagnostics.AddError("Failed to get file", fmt.Sprintf("Path: %s, Error: %s", model.DestinationPath.ValueString(), err.Error()))
 			return
