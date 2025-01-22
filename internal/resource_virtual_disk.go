@@ -88,6 +88,8 @@ func (v *virtualDiskModel) toResizePayload() (payload freeboxTypes.VirtualDisksR
 }
 
 type virtualDiskPollingModel struct {
+	// Create is the polling configuration for create operation.
+	Create types.Object `tfsdk:"create"`
 	// Delete is the polling configuration for delete operation.
 	Delete types.Object `tfsdk:"delete"`
 	// Move is the polling configuration for move operation.
@@ -96,6 +98,7 @@ type virtualDiskPollingModel struct {
 
 func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(virtualDiskPollingModel{}.AttrTypes(), map[string]attr.Value{
+		"create": models.NewPollingSpecModel(time.Second, time.Minute),
 		"delete": models.NewPollingSpecModel(time.Second, time.Minute),
 		"move":   models.NewPollingSpecModel(time.Second, time.Minute),
 	})
@@ -103,6 +106,13 @@ func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
 
 func (v virtualDiskPollingModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
+		"create": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Polling configuration for create operation",
+			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
+		},
 		"delete": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
@@ -122,6 +132,7 @@ func (v virtualDiskPollingModel) ResourceAttributes() map[string]schema.Attribut
 
 func (v virtualDiskPollingModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
+		"create": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"move":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"delete": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 	}
@@ -324,7 +335,7 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 		return
 	}
 	if task != nil {
-		var pollingModel remoteFilePollingModel
+		var pollingModel virtualDiskPollingModel
 		if diags := oldModel.Polling.As(ctx, &pollingModel, basetypes.ObjectAsOptions{}); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
