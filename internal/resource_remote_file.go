@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -44,8 +45,12 @@ type remoteFileResource struct {
 type remoteFileModel struct {
 	// DestinationPath is the file path on the Freebox.
 	DestinationPath types.String `tfsdk:"destination_path"`
+
 	// SourceURL is the file URL.
 	SourceURL types.String `tfsdk:"source_url"`
+	// SourceRemoteFile is the remote file path.
+	SourceRemoteFile types.String `tfsdk:"source_remote_file"`
+
 	// Checksum is the file checksum.
 	// Verify the hash of the downloaded file.
 	// The format is sha256:xxxxxx or sha512:xxxxxx; or the URL of a SHA256SUMS, SHA512SUMS, -CHECKSUM or .sha256 file.
@@ -60,24 +65,27 @@ type remoteFileModel struct {
 
 func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"destination_path": types.StringType,
-		"source_url":       types.StringType,
-		"checksum":         types.StringType,
-		"authentication":   types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
-		"polling":          types.ObjectType{}.WithAttributeTypes(remoteFilePollingModel{}.AttrTypes()),
+		"destination_path":   types.StringType,
+		"source_url":         types.StringType,
+		"source_remote_file": types.StringType,
+		"checksum":           types.StringType,
+		"authentication":     types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
+		"polling":            types.ObjectType{}.WithAttributeTypes(remoteFilePollingModel{}.AttrTypes()),
 	}
 }
 
 type remoteFilePollingModel struct {
 	Delete          types.Object `tfsdk:"delete"`
+	Copy            types.Object `tfsdk:"copy"`
 	Move            types.Object `tfsdk:"move"`
-	Create          types.Object `tfsdk:"create"`
+	Download        types.Object `tfsdk:"download"`
 	ChecksumCompute types.Object `tfsdk:"checksum_compute"`
 }
 
 func (o remoteFilePollingModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(remoteFilePollingModel{}.AttrTypes(), map[string]attr.Value{
-		"create":           models.NewPollingSpecModel(3*time.Second, 30*time.Minute),
+		"download":         models.NewPollingSpecModel(3*time.Second, 30*time.Minute),
+		"copy":             models.NewPollingSpecModel(time.Second, time.Minute),
 		"move":             models.NewPollingSpecModel(time.Second, time.Minute),
 		"delete":           models.NewPollingSpecModel(time.Second, time.Minute),
 		"checksum_compute": models.NewPollingSpecModel(time.Second, 2*time.Minute),
@@ -86,12 +94,19 @@ func (o remoteFilePollingModel) defaults() basetypes.ObjectValue {
 
 func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"create": schema.SingleNestedAttribute{
+		"download": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
 			MarkdownDescription: "Creation polling configuration",
 			Attributes:          models.PollingSpecModelResourceAttributes(3*time.Second, 30*time.Minute),
 			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(3*time.Second, 30*time.Minute)),
+		},
+		"copy": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Copy polling configuration",
+			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
 		},
 		"move": schema.SingleNestedAttribute{
 			Optional:            true,
@@ -119,7 +134,8 @@ func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute
 
 func (o remoteFilePollingModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"create":           types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"download":         types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"copy":             types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"move":             types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"delete":           types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"checksum_compute": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
@@ -197,8 +213,11 @@ func (v *remoteFileModel) populateDefaults(ctx context.Context) (diagnostics dia
 			return
 		}
 
-		if polling.Create.IsUnknown() {
-			polling.Create = models.NewPollingSpecModel(3*time.Second, 30*time.Minute)
+		if polling.Download.IsUnknown() {
+			polling.Download = models.NewPollingSpecModel(3*time.Second, 30*time.Minute)
+		}
+		if polling.Copy.IsUnknown() {
+			polling.Copy = models.NewPollingSpecModel(time.Second, time.Minute)
 		}
 		if polling.Move.IsUnknown() {
 			polling.Move = models.NewPollingSpecModel(time.Second, time.Minute)
@@ -271,9 +290,26 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 			},
 			"source_url": schema.StringAttribute{
 				MarkdownDescription: "The URL of the file to download",
-				Required:            true,
+				Required:            false,
+				Optional:            true,
 				Validators: []validator.String{
 					models.DownloadURLValidator(),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file")),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+						var checksum basetypes.StringValue
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &checksum)...)
+						rrifr.RequiresReplace = rrifr.RequiresReplace || checksum.IsNull() || checksum.IsUnknown()
+					}, "", "Replace the remote file if the checksum not defined"),
+				},
+			},
+			"source_remote_file": schema.StringAttribute{
+				MarkdownDescription: "The path to the file on the Freebox to copy",
+				Required:            false,
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -355,7 +391,7 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}()
 
-	if diags := v.createFromURL(ctx, resp.Private, &model); diags.HasError() {
+	if diags := v.create(ctx, resp.Private, &model); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
@@ -389,6 +425,18 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 	}
 }
 
+func (v *remoteFileResource) create(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
+	switch {
+	case !model.SourceURL.IsNull():
+		return v.createFromURL(ctx, state, model)
+	case !model.SourceRemoteFile.IsNull():
+		return v.createFromRemoteFile(ctx, state, model)
+	default:
+		diagnostics.AddError("Invalid source", "Please provide a source URL, local file path or remote file path")
+		return
+	}
+}
+
 func (v *remoteFileResource) createFromURL(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
 	payload, diags := model.toDownloadPayload()
 	if diags.HasError() {
@@ -418,14 +466,14 @@ func (v *remoteFileResource) createFromURL(ctx context.Context, state providerda
 		return
 	}
 
-	var createPolling models.Polling
+	var downloadPolling models.Polling
 
-	if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+	if diags := polling.Download.As(ctx, &downloadPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
 		diagnostics.Append(diags...)
 		return
 	}
 
-	if diags := waitForDownloadTask(ctx, v.client, taskID, createPolling); diags.HasError() {
+	if diags := waitForDownloadTask(ctx, v.client, taskID, downloadPolling); diags.HasError() {
 		diagnostics.Append(diags...)
 		return
 	}
@@ -436,6 +484,50 @@ func (v *remoteFileResource) createFromURL(ctx context.Context, state providerda
 
 	if err := stopAndDeleteDownloadTask(ctx, v.client, taskID); err != nil {
 		diagnostics.AddError("Failed to stop and delete download task", fmt.Sprintf("Task %d, Error: %s", taskID, err.Error()))
+		return
+	}
+
+	if diags := providerdata.UnsetCurrentTask(ctx, state); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	return
+}
+
+func (v *remoteFileResource) createFromRemoteFile(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
+	task, err := v.client.CopyFiles(ctx, []string{model.SourceRemoteFile.ValueString()}, model.DestinationPath.ValueString(), freeboxTypes.FileCopyModeOverwrite)
+	if err != nil {
+		diagnostics.AddError("Failed to copy file", err.Error())
+		return
+	}
+
+	if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeFileSystem, task.ID); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	var polling remoteFilePollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	var copyPolling models.Polling
+
+	if diags := polling.Copy.As(ctx, &copyPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForFileSystemTask(ctx, v.client, task.ID, copyPolling); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if err := stopAndDeleteFileSystemTask(ctx, v.client, task.ID); err != nil {
+		diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task %d, Error: %s", task.ID, err.Error()))
 		return
 	}
 
@@ -487,7 +579,7 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 			var taskPolling types.Object = types.ObjectNull(models.Polling{}.AttrTypes())
 			switch models.TaskType(task.Type.ValueString()) {
 			case models.TaskTypeDownload:
-				taskPolling = pollingModel.Create
+				taskPolling = pollingModel.Download
 			case models.TaskTypeFileSystem:
 				taskPolling = pollingModel.Delete
 			default:
@@ -601,7 +693,7 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		if !recreate && taskType == models.TaskTypeDownload {
 			var polling models.Polling
 
-			if diags := pollingModel.Create.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			if diags := pollingModel.Download.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
 				resp.Diagnostics.Append(diags...)
 				return
 			}
@@ -644,43 +736,9 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 			return
 		}
 
-		tflog.Debug(ctx, "Downloading the file...")
+		tflog.Debug(ctx, "Recreate the file...")
 
-		payload, diags := newModel.toDownloadPayload()
-		if diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
-		taskID, err := v.client.AddDownloadTask(ctx, payload)
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to add download task", err.Error())
-			return
-		}
-
-		if diags := providerdata.SetCurrentTask(ctx, resp.Private, models.TaskTypeDownload, taskID); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
-		var createPolling models.Polling
-
-		if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
-		if diags := waitForDownloadTask(ctx, v.client, taskID, createPolling); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
-		if err := stopAndDeleteDownloadTask(ctx, v.client, taskID); err != nil {
-			resp.Diagnostics.AddError("Failed to stop and delete download task", err.Error())
-			return
-		}
-
-		if diags := providerdata.UnsetCurrentTask(ctx, resp.Private); diags.HasError() {
+		if diags := v.create(ctx, resp.Private, &newModel); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
