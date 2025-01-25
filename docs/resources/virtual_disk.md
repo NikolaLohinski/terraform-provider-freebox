@@ -38,8 +38,18 @@ output "task_id" {
 
 Optional:
 
+- `create` (Attributes) Polling configuration for create operation (see [below for nested schema](#nestedatt--polling--create))
 - `delete` (Attributes) Polling configuration for delete operation (see [below for nested schema](#nestedatt--polling--delete))
 - `move` (Attributes) Polling configuration for move operation (see [below for nested schema](#nestedatt--polling--move))
+
+<a id="nestedatt--polling--create"></a>
+### Nested Schema for `polling.create`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
 
 <a id="nestedatt--polling--delete"></a>
 ### Nested Schema for `polling.delete`
