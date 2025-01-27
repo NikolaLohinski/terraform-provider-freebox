@@ -22,13 +22,14 @@ output "task_id" {
 ### Required
 
 - `destination_path` (String) Path to the file on the Freebox
-- `source_url` (String) The URL of the file to download
 
 ### Optional
 
 - `authentication` (Attributes) Authentication credentials to use for the operation (see [below for nested schema](#nestedatt--authentication))
 - `checksum` (String) Checksum to verify the hash of the downloaded file
 - `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
+- `source_remote_file` (String) The path to the file on the Freebox to copy
+- `source_url` (String) The URL of the file to download
 
 <a id="nestedatt--authentication"></a>
 ### Nested Schema for `authentication`
@@ -53,8 +54,9 @@ Optional:
 Optional:
 
 - `checksum_compute` (Attributes) Checksum compute polling configuration (see [below for nested schema](#nestedatt--polling--checksum_compute))
-- `create` (Attributes) Creation polling configuration (see [below for nested schema](#nestedatt--polling--create))
+- `copy` (Attributes) Copy polling configuration (see [below for nested schema](#nestedatt--polling--copy))
 - `delete` (Attributes) Deletion polling configuration (see [below for nested schema](#nestedatt--polling--delete))
+- `download` (Attributes) Creation polling configuration (see [below for nested schema](#nestedatt--polling--download))
 - `move` (Attributes) Move polling configuration (see [below for nested schema](#nestedatt--polling--move))
 
 <a id="nestedatt--polling--checksum_compute"></a>
@@ -66,8 +68,8 @@ Optional:
 - `timeout` (String) The timeout for the operation.
 
 
-<a id="nestedatt--polling--create"></a>
-### Nested Schema for `polling.create`
+<a id="nestedatt--polling--copy"></a>
+### Nested Schema for `polling.copy`
 
 Optional:
 
@@ -77,6 +79,15 @@ Optional:
 
 <a id="nestedatt--polling--delete"></a>
 ### Nested Schema for `polling.delete`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--download"></a>
+### Nested Schema for `polling.download`
 
 Optional:
 
