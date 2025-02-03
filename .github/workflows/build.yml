@@ -28,7 +28,7 @@ jobs:
       - name: Build
         run: go build -v ./...
   test:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     name: Run tests with mage
     concurrency:
       group: freebox
