@@ -1,13 +1,16 @@
 resource "freebox_port_forwarding" "example" {
   enabled          = true
   ip_protocol      = "udp"
-  port_range_start = 8000
-  port_range_end   = 8000
   target_ip        = "192.168.1.255"
   comment          = "This is an example comment"
   source_ip        = "0.0.0.0"
+  # Required to set either source_port/target_port as shown
+  # to do port mapping, or range_port_start/range_port_end
+  # to forward a full range of ports without port forwarding
+  source_port      = 443
+  target_port      = 8443
 }
 
-output "task_id" {
+output "hostname" {
   value = resource.freebox_port_forwarding.example.hostname
 }
