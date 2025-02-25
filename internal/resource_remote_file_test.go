@@ -956,21 +956,11 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							resource "freebox_remote_file" "` + resourceName + `" {
 								source_url = "` + exampleFile.source + `"
 								destination_path = "` + exampleFile.filepath + `"
-								extract = true
 
-								polling = {
-									download = {
-										interval = "1s"
-										timeout = "1m"
-									}
-									delete = {
-										interval = "1s"
-										timeout = "1m"
-									}
-									checksum_compute = {
-										interval = "1s"
-										timeout = "1m"
-									}
+								extract = {
+									enable = true
+									delete_archive = false
+									overwrite = true
 								}
 							}
 						`,

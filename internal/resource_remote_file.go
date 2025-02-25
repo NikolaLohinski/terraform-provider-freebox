@@ -63,7 +63,7 @@ type remoteFileModel struct {
 	Polling types.Object `tfsdk:"polling"`
 
 	// Extract is whether to extract the file after downloading.
-	Extract types.Bool `tfsdk:"extract"`
+	Extract types.Object `tfsdk:"extract"`
 }
 
 func (o remoteFileModel) AttrTypes() map[string]attr.Type {
@@ -72,10 +72,64 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 		"source_url":         types.StringType,
 		"source_remote_file": types.StringType,
 		"checksum":           types.StringType,
-		"extract":            types.BoolType,
+		"extract":            types.ObjectType{}.WithAttributeTypes(remoteFileExtractModel{}.AttrTypes()),
 		"authentication":     types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
 		"polling":            types.ObjectType{}.WithAttributeTypes(remoteFilePollingModel{}.AttrTypes()),
 	}
+}
+
+type remoteFileExtractModel struct {
+	Enable          types.Bool   `tfsdk:"enable"`
+	DestinationPath types.String `tfsdk:"destination_path"`
+	Password        types.String `tfsdk:"password"`
+	DeleteArchive   types.Bool   `tfsdk:"delete_archive"`
+	Overwrite       types.Bool   `tfsdk:"overwrite"`
+}
+
+func (o remoteFileExtractModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"enable": schema.BoolAttribute{
+			Required:            true,
+			MarkdownDescription: "Enable extraction",
+		},
+		"destination_path": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "The destination folder",
+		},
+		"password": schema.StringAttribute{
+			Optional:            true,
+			Sensitive:           true,
+			MarkdownDescription: "The archive password",
+		},
+		"delete_archive": schema.BoolAttribute{
+			Optional:            true,
+			MarkdownDescription: "Delete archive after extraction",
+		},
+		"overwrite": schema.BoolAttribute{
+			Optional:            true,
+			MarkdownDescription: "Overwrite files on conflict",
+		},
+	}
+}
+
+func (o remoteFileExtractModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"enable":           types.BoolType,
+		"destination_path": types.StringType,
+		"password":         types.StringType,
+		"delete_archive":   types.BoolType,
+		"overwrite":        types.BoolType,
+	}
+}
+
+func (o remoteFileExtractModel) defaults() basetypes.ObjectValue {
+	return basetypes.NewObjectValueMust(remoteFileExtractModel{}.AttrTypes(), map[string]attr.Value{
+		"enable":           basetypes.NewBoolValue(false),
+		"destination_path": basetypes.NewStringValue(""),
+		"password":         basetypes.NewStringValue(""),
+		"delete_archive":   basetypes.NewBoolValue(false),
+		"overwrite":        basetypes.NewBoolValue(false),
+	})
 }
 
 type remoteFilePollingModel struct {
@@ -211,6 +265,9 @@ func (o remoteFileModelAuthenticationsBasicAuthModel) AttrTypes() map[string]att
 }
 
 func (v *remoteFileModel) populateDefaults(ctx context.Context) (diagnostics diag.Diagnostics) {
+	if v.Extract.IsUnknown() || v.Extract.IsNull() {
+		v.Extract = remoteFileExtractModel{}.defaults()
+	}
 	if v.Authentication.IsUnknown() {
 		v.Authentication = remoteFileModelAuthenticationsModel{}.defaults()
 	}
@@ -347,9 +404,12 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 					stringplanmodifier.RequiresReplace(),
 				},
 			},
-			"extract": schema.BoolAttribute{
+			"extract": schema.SingleNestedAttribute{
 				MarkdownDescription: "Whether to extract the file after downloading",
 				Optional:            true,
+				Computed:            true,
+				Attributes:          remoteFileExtractModel{}.ResourceAttributes(),
+				Default:             objectdefault.StaticValue(remoteFileExtractModel{}.defaults()),
 			},
 			"authentication": schema.SingleNestedAttribute{
 				MarkdownDescription: "Authentication credentials to use for the operation",
@@ -445,63 +505,74 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 		return
 	}
 
-	if model.Extract.ValueBool() {
-		src := model.DestinationPath.ValueString()
-		tflog.Debug(ctx, fmt.Sprintf("Extracting the file %s", src))
-		dst := go_path.Dir(src) + "/"
-		tflog.Debug(ctx, fmt.Sprintf("Extracting the file to %s", dst))
+	if !model.Extract.IsNull() {
+		var extract *remoteFileExtractModel
 
-		task, err := v.client.ExtractFile(ctx, freeboxTypes.ExtractFilePayload{
-			Src:           freeboxTypes.Base64Path(model.DestinationPath.ValueString()),
-			Dst:           freeboxTypes.Base64Path(dst),
-			DeleteArchive: false,
-			Overwrite:     false,
-		})
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to extract file", err.Error())
-			return
-		}
-
-		tflog.Debug(ctx, "Start extracting file", map[string]interface{}{
-			"task.id": task.ID,
-		})
-
-		if diags := providerdata.SetCurrentTask(ctx, resp.Private, models.TaskTypeFileSystem, task.ID); diags.HasError() {
+		if diags := model.Extract.As(context.Background(), &extract, basetypes.ObjectAsOptions{}); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
 
-		var polling remoteFilePollingModel
+		if extract.Enable.ValueBool() {
 
-		if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
+			src := model.DestinationPath.ValueString()
+			tflog.Debug(ctx, fmt.Sprintf("Extracting the file %s", src))
+			dst := go_path.Dir(src) + "/"
+			tflog.Debug(ctx, fmt.Sprintf("Extracting the file to %s", dst))
 
-		var extractPolling models.Polling
+			task, err := v.client.ExtractFile(ctx, freeboxTypes.ExtractFilePayload{
+				Src:           freeboxTypes.Base64Path(model.DestinationPath.ValueString()),
+				Dst:           freeboxTypes.Base64Path(dst),
+				Password:      extract.Password.ValueString(),
+				DeleteArchive: extract.DeleteArchive.ValueBool(),
+				Overwrite:     extract.Overwrite.ValueBool(),
+			})
+			if err != nil {
+				resp.Diagnostics.AddError("Failed to extract file", err.Error())
+				return
+			}
 
-		if diags := polling.Extract.As(ctx, &extractPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
+			tflog.Debug(ctx, "Start extracting file", map[string]interface{}{
+				"task.id": task.ID,
+			})
 
-		if diags := waitForFileSystemTask(ctx, v.client, task.ID, extractPolling); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
+			if diags := providerdata.SetCurrentTask(ctx, resp.Private, models.TaskTypeFileSystem, task.ID); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
 
-		tflog.Info(ctx, "Extract task completed", map[string]interface{}{
-			"task.id": task.ID,
-		})
+			var polling remoteFilePollingModel
 
-		if err := stopAndDeleteFileSystemTask(ctx, v.client, task.ID); err != nil {
-			resp.Diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task %d, Error: %s", task.ID, err.Error()))
-			return
-		}
+			if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
 
-		if diags := providerdata.UnsetCurrentTask(ctx, resp.Private); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
+			var extractPolling models.Polling
+
+			if diags := polling.Extract.As(ctx, &extractPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			if diags := waitForFileSystemTask(ctx, v.client, task.ID, extractPolling); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			tflog.Info(ctx, "Extract task completed", map[string]interface{}{
+				"task.id": task.ID,
+			})
+
+			if err := stopAndDeleteFileSystemTask(ctx, v.client, task.ID); err != nil {
+				resp.Diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task %d, Error: %s", task.ID, err.Error()))
+				return
+			}
+
+			if diags := providerdata.UnsetCurrentTask(ctx, resp.Private); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
 		}
 	}
 }
