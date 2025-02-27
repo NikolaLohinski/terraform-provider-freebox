@@ -2,6 +2,7 @@ package internal_test
 
 import (
 	"path"
+	go_path "path"
 	"regexp"
 	"strings"
 	"time"
@@ -958,7 +959,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 								destination_path = "` + exampleFile.filepath + `"
 
 								extract = {
-									enable = true
+									destination_path = "` + go_path.Dir(exampleFile.filepath) + `"
 									delete_archive = false
 									overwrite = true
 								}

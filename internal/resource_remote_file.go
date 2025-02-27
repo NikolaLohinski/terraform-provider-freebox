@@ -79,7 +79,6 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 }
 
 type remoteFileExtractModel struct {
-	Enable          types.Bool   `tfsdk:"enable"`
 	DestinationPath types.String `tfsdk:"destination_path"`
 	Password        types.String `tfsdk:"password"`
 	DeleteArchive   types.Bool   `tfsdk:"delete_archive"`
@@ -88,10 +87,6 @@ type remoteFileExtractModel struct {
 
 func (o remoteFileExtractModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
-		"enable": schema.BoolAttribute{
-			Required:            true,
-			MarkdownDescription: "Enable extraction",
-		},
 		"destination_path": schema.StringAttribute{
 			Optional:            true,
 			MarkdownDescription: "The destination folder",
@@ -114,7 +109,6 @@ func (o remoteFileExtractModel) ResourceAttributes() map[string]schema.Attribute
 
 func (o remoteFileExtractModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"enable":           types.BoolType,
 		"destination_path": types.StringType,
 		"password":         types.StringType,
 		"delete_archive":   types.BoolType,
@@ -124,8 +118,7 @@ func (o remoteFileExtractModel) AttrTypes() map[string]attr.Type {
 
 func (o remoteFileExtractModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(remoteFileExtractModel{}.AttrTypes(), map[string]attr.Value{
-		"enable":           basetypes.NewBoolValue(false),
-		"destination_path": basetypes.NewStringValue(""),
+		"destination_path": basetypes.NewStringNull(),
 		"password":         basetypes.NewStringValue(""),
 		"delete_archive":   basetypes.NewBoolValue(false),
 		"overwrite":        basetypes.NewBoolValue(false),
@@ -513,11 +506,11 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 			return
 		}
 
-		if extract.Enable.ValueBool() {
+		if !extract.DestinationPath.IsNull() {
 
 			src := model.DestinationPath.ValueString()
 			tflog.Debug(ctx, fmt.Sprintf("Extracting the file %s", src))
-			dst := go_path.Dir(src) + "/"
+			dst := extract.DestinationPath.ValueString()
 			tflog.Debug(ctx, fmt.Sprintf("Extracting the file to %s", dst))
 
 			task, err := v.client.ExtractFile(ctx, freeboxTypes.ExtractFilePayload{
