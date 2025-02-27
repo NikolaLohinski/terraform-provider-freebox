@@ -2,7 +2,9 @@ package internal_test
 
 import (
 	"path"
+	go_path "path"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/nikolalohinski/free-go/client"
@@ -930,6 +932,71 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 						return nil
 					},
 				})
+			})
+		})
+	})
+	Context("create and extract (CE)", func() {
+		BeforeEach(func(ctx SpecContext) {
+			resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
+			filename := resourceName + ".raw.xz"
+			exampleFile = file{
+				filename:  filename,
+				directory: existingDisk.directory,
+				filepath:  path.Join(root, existingDisk.directory, filename),
+				digest:    "sha256:3e5298473c4b4a8a8a344e233c0c15eb446e333cfe70dcca7d50cc378e99c662",
+				source:    "https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.4/nocloud-arm64.raw.xz",
+			}
+		})
+
+		It("should download and extract the file", func(ctx SpecContext) {
+			resource.UnitTest(GinkgoT(), resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						Config: providerBlock + `
+							resource "freebox_remote_file" "` + resourceName + `" {
+								source_url = "` + exampleFile.source + `"
+								destination_path = "` + exampleFile.filepath + `"
+
+								extract = {
+									destination_path = "` + go_path.Dir(exampleFile.filepath) + `"
+									delete_archive = false
+									overwrite = true
+								}
+							}
+						`,
+						Check: resource.ComposeAggregateTestCheckFunc(
+							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+							resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
+							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+							func(s *terraform.State) error {
+								fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+								Expect(err).To(BeNil())
+								Expect(fileInfo.Name).To(Equal(exampleFile.filename))
+								Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+
+								extractedPath := strings.TrimSuffix(exampleFile.filepath, path.Ext(exampleFile.filepath))
+								extractedInfo, err := freeboxClient.GetFileInfo(ctx, extractedPath)
+								Expect(err).To(BeNil())
+								Expect(extractedInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+
+								return nil
+							},
+						),
+					},
+				},
+				CheckDestroy: func(s *terraform.State) error {
+					_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+					Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+
+					// TODO: remove extract file at the end of the test
+					// extractedPath := strings.TrimSuffix(exampleFile.filepath, path.Ext(exampleFile.filepath))
+					// _, err = freeboxClient.GetFileInfo(ctx, extractedPath)
+					// Expect(err).To(MatchError(client.ErrPathNotFound), "extracted directory %s should not exist", extractedPath)
+
+					return nil
+				},
 			})
 		})
 	})
