@@ -11,7 +11,7 @@ resource "freebox_remote_file" "example" {
   checksum         = "sha256:0a0a9f2a6772942557ab5347d9b0e6b8"
 }
 
-output "task_id" {
+output "filesystem_task_id" {
   value = resource.freebox_remote_file.example.task_id
 }
 ```

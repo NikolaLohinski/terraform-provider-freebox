@@ -17,7 +17,7 @@ resource "freebox_virtual_machine" "example" {
   }
 }
 
-output "IP" {
+output "ip" {
   value = one(resource.freebox_virtual_machine.example.networking[*].ipv4)
 }
 ```
