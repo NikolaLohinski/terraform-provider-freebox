@@ -50,6 +50,8 @@ type remoteFileModel struct {
 	SourceURL types.String `tfsdk:"source_url"`
 	// SourceRemoteFile is the remote file path.
 	SourceRemoteFile types.String `tfsdk:"source_remote_file"`
+	// SourceBytes is the file content in bytes.
+	SourceBytes types.String `tfsdk:"source_bytes"`
 
 	// Checksum is the file checksum.
 	// Verify the hash of the downloaded file.
@@ -68,6 +70,7 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 		"destination_path":   types.StringType,
 		"source_url":         types.StringType,
 		"source_remote_file": types.StringType,
+		"source_bytes":       types.StringType,
 		"checksum":           types.StringType,
 		"authentication":     types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
 		"polling":            types.ObjectType{}.WithAttributeTypes(remoteFilePollingModel{}.AttrTypes()),
@@ -78,6 +81,7 @@ type remoteFilePollingModel struct {
 	Delete          types.Object `tfsdk:"delete"`
 	Copy            types.Object `tfsdk:"copy"`
 	Move            types.Object `tfsdk:"move"`
+	Upload          types.Object `tfsdk:"upload"`
 	Download        types.Object `tfsdk:"download"`
 	ChecksumCompute types.Object `tfsdk:"checksum_compute"`
 }
@@ -85,6 +89,7 @@ type remoteFilePollingModel struct {
 func (o remoteFilePollingModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(remoteFilePollingModel{}.AttrTypes(), map[string]attr.Value{
 		"download":         models.NewPollingSpecModel(3*time.Second, 30*time.Minute),
+		"upload":           models.NewPollingSpecModel(3*time.Second, 30*time.Minute),
 		"copy":             models.NewPollingSpecModel(time.Second, time.Minute),
 		"move":             models.NewPollingSpecModel(time.Second, time.Minute),
 		"delete":           models.NewPollingSpecModel(time.Second, time.Minute),
@@ -98,6 +103,13 @@ func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute
 			Optional:            true,
 			Computed:            true,
 			MarkdownDescription: "Creation polling configuration",
+			Attributes:          models.PollingSpecModelResourceAttributes(3*time.Second, 30*time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(3*time.Second, 30*time.Minute)),
+		},
+		"upload": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Upload polling configuration",
 			Attributes:          models.PollingSpecModelResourceAttributes(3*time.Second, 30*time.Minute),
 			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(3*time.Second, 30*time.Minute)),
 		},
@@ -135,6 +147,7 @@ func (o remoteFilePollingModel) ResourceAttributes() map[string]schema.Attribute
 func (o remoteFilePollingModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"download":         types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"upload":           types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"copy":             types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"move":             types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"delete":           types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
@@ -216,6 +229,9 @@ func (v *remoteFileModel) populateDefaults(ctx context.Context) (diagnostics dia
 		if polling.Download.IsUnknown() {
 			polling.Download = models.NewPollingSpecModel(3*time.Second, 30*time.Minute)
 		}
+		if polling.Upload.IsUnknown() {
+			polling.Upload = models.NewPollingSpecModel(time.Second, 5*time.Minute)
+		}
 		if polling.Copy.IsUnknown() {
 			polling.Copy = models.NewPollingSpecModel(time.Second, time.Minute)
 		}
@@ -294,7 +310,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Optional:            true,
 				Validators: []validator.String{
 					models.DownloadURLValidator(),
-					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file"), path.MatchRoot("source_bytes")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -309,7 +325,22 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            false,
 				Optional:            true,
 				Validators: []validator.String{
-					stringvalidator.ConflictsWith(path.MatchRoot("source_url")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_bytes")),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+						var checksum basetypes.StringValue
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &checksum)...)
+						rrifr.RequiresReplace = rrifr.RequiresReplace || checksum.IsNull() || checksum.IsUnknown()
+					}, "", "Replace the remote file if the checksum not defined"),
+				},
+			},
+			"source_bytes": schema.StringAttribute{
+				MarkdownDescription: "The content of the file",
+				Required:            false,
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_remote_file")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -431,8 +462,10 @@ func (v *remoteFileResource) create(ctx context.Context, state providerdata.Sett
 		return v.createFromURL(ctx, state, model)
 	case !model.SourceRemoteFile.IsNull():
 		return v.createFromRemoteFile(ctx, state, model)
+	case !model.SourceBytes.IsNull():
+		return v.createFromBytes(ctx, state, model)
 	default:
-		diagnostics.AddError("Invalid source", "Please provide a source URL, local file path or remote file path")
+		diagnostics.AddError("Invalid source", "Please provide a source URL, remote file path or content bytes")
 		return
 	}
 }
@@ -539,6 +572,85 @@ func (v *remoteFileResource) createFromRemoteFile(ctx context.Context, state pro
 	return
 }
 
+func (v *remoteFileResource) createFromBytes(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
+	var polling remoteFilePollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	var uploadPolling models.Polling
+
+	if diags := polling.Upload.As(ctx, &uploadPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := uploadPolling.Timeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	content := model.SourceBytes.ValueString()
+	destination := model.DestinationPath.ValueString()
+
+	writer, requestID, err := v.client.FileUploadStart(ctx, freeboxTypes.FileUploadStartActionInput{
+		Size:     len(content),
+		Dirname:  freeboxTypes.Base64Path(go_path.Dir(destination)),
+		Filename: go_path.Base(model.DestinationPath.ValueString()),
+		Force:    freeboxTypes.FileUploadStartActionForceOverwrite,
+	})
+	if err != nil {
+		diagnostics.AddError("Failed to start upload", err.Error())
+		return
+	}
+
+	if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeUpload, int64(requestID)); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	// We should find the task id and store it with providerdata.
+	// Note requestID != taskID
+	/*
+		if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeUpload, taskID); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
+		}
+	*/
+
+	if _, err := writer.Write([]byte(content)); err != nil {
+		diagnostics.AddError("Failed to write content", err.Error())
+		return
+	}
+
+	if err := writer.Close(); err != nil {
+		diagnostics.AddError("Failed to close writer", err.Error())
+		return
+	}
+
+	// We should stop, delete and unset the task.
+	// Note requestID != taskID
+	/*
+		if err := stopAndDeleteTask(ctx, v.client, models.TaskTypeUpload, int64(writer.RequestID)); err != nil {
+			diagnostics.AddError("Failed to stop and delete task", fmt.Sprintf("Task %d, Type: %s, Error: %s", int64(writer.RequestID), models.TaskTypeUpload, err.Error()))
+			return
+		}
+
+		if diags := providerdata.UnsetCurrentTask(ctx, state); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
+		}
+	*/
+
+	return nil
+}
+
 func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
 	var model remoteFileModel
 
@@ -580,6 +692,9 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 			switch models.TaskType(task.Type.ValueString()) {
 			case models.TaskTypeDownload:
 				taskPolling = pollingModel.Download
+			case models.TaskTypeUpload:
+				taskPolling = pollingModel.Upload
+				return
 			case models.TaskTypeFileSystem:
 				taskPolling = pollingModel.Delete
 			default:
@@ -595,7 +710,7 @@ func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest,
 				return
 			}
 
-			tflog.Info(ctx, "Waiting for the previous download task to complete", map[string]interface{}{
+			tflog.Info(ctx, "Waiting for the previous task to complete", map[string]interface{}{
 				"task.id": task.ID.ValueInt64(),
 			})
 
@@ -669,7 +784,7 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 	}()
 
-	recreate := !oldModel.SourceURL.Equal(newModel.SourceURL)
+	recreate := !oldModel.SourceURL.Equal(newModel.SourceURL) || !oldModel.SourceBytes.Equal(newModel.SourceBytes)
 
 	if !oldModel.Checksum.IsNull() && !oldModel.Checksum.IsUnknown() &&
 		!newModel.Checksum.IsNull() && !newModel.Checksum.IsUnknown() {
@@ -690,15 +805,31 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 
 		taskType := models.TaskType(task.Type.ValueString())
 
-		if !recreate && taskType == models.TaskTypeDownload {
+		if !recreate {
 			var polling models.Polling
 
-			if diags := pollingModel.Download.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
-				resp.Diagnostics.Append(diags...)
-				return
+			switch taskType {
+			case models.TaskTypeDownload:
+				if diags := pollingModel.Download.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+					resp.Diagnostics.Append(diags...)
+					return
+				}
+			case models.TaskTypeUpload:
+				if diags := pollingModel.Upload.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+					resp.Diagnostics.Append(diags...)
+					return
+				}
+			case models.TaskTypeFileSystem:
+				// Impossible to detect if it is a delete or a copy task
+				if diags := pollingModel.Delete.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+					resp.Diagnostics.Append(diags...)
+					return
+				}
+			default:
+				// Nothing to do
 			}
 
-			tflog.Info(ctx, "Waiting for the previous download task to complete", map[string]interface{}{
+			tflog.Info(ctx, "Waiting for the previous task to complete", map[string]interface{}{
 				"task.id": task.ID.ValueInt64(),
 			})
 
@@ -835,7 +966,9 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 		ctx := tflog.SetField(ctx, "task.id", taskID)
 		ctx = tflog.SetField(ctx, "task.type", task.Type.ValueString())
 
-		if task.Type.ValueString() == string(models.TaskTypeDownload) {
+		taskType := models.TaskType(task.Type.ValueString())
+		switch taskType {
+		case models.TaskTypeDownload:
 			tflog.Debug(ctx, "Stopping the download task...")
 
 			if err := v.client.UpdateDownloadTask(ctx, taskID, freeboxTypes.DownloadTaskUpdate{
@@ -894,11 +1027,11 @@ func (v *remoteFileResource) Delete(ctx context.Context, req resource.DeleteRequ
 					}
 				}
 			}
-		} else {
+		case models.TaskTypeFileSystem, models.TaskTypeUpload:
 			tflog.Info(ctx, "Deleting the task...")
 
-			if err := stopAndDeleteTask(ctx, v.client, models.TaskTypeFileSystem, taskID); err != nil {
-				resp.Diagnostics.AddError("Failed to stop and delete task", fmt.Sprintf("Task %d, Error: %s", taskID, err.Error()))
+			if err := stopAndDeleteTask(ctx, v.client, taskType, taskID); err != nil {
+				resp.Diagnostics.AddError("Failed to stop and delete task", fmt.Sprintf("Task %d, Type: %s, Error: %s", taskID, taskType, err.Error()))
 				return
 			}
 

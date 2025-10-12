@@ -57,6 +57,18 @@ func stopAndDeleteVirtualDiskTask(ctx context.Context, c client.Client, taskID i
 	return nil
 }
 
+func stopAndDeleteUploadTask(ctx context.Context, c client.Client, taskID int64) error {
+	if err := c.DeleteUploadTask(ctx, taskID); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("delete upload task: %w", err)
+	}
+
+	return nil
+}
+
 func stopAndDeleteDownloadTask(ctx context.Context, c client.Client, taskID int64) error {
 	errs := make([]error, 0, 2)
 
@@ -256,6 +268,68 @@ func waitForDiskTask(ctx context.Context, c client.Client, taskID int64) (diagno
 	}
 }
 
+func waitForUploadTask(ctx context.Context, c client.Client, taskID int64, polling models.Polling) (diagnostics diag.Diagnostics) {
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeUpload)
+
+	interval, diags := polling.Interval.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := polling.Timeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	tflog.Debug(ctx, "Waiting for upload task to complete...", map[string]interface{}{
+		"timeout":  timeout,
+		"interval": interval,
+	})
+
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var currentStatus string
+
+	for {
+		task, taskErr := c.GetUploadTask(ctx, taskID)
+		if taskErr != nil {
+			diagnostics.AddError("Failed to get upload task", taskErr.Error())
+		} else {
+			currentStatus = string(task.Status)
+
+			switch task.Status {
+			case freeboxTypes.UploadTaskStatusFailed,
+				freeboxTypes.UploadTaskStatusCancelled,
+				freeboxTypes.UploadTaskStatusConflict,
+				freeboxTypes.UploadTaskStatusTimeout:
+				diagnostics.AddError("Upload task failed", fmt.Sprintf("Task: %d, Error code: %s", taskID, task.Status))
+				return
+			case freeboxTypes.UploadTaskStatusDone:
+				return nil // Done
+			default:
+				tflog.Debug(ctx, "Upload task not done yet", map[string]interface{}{
+					"task.status": task.Status,
+				})
+				// Nothing to do
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			diagnostics.AddError("Upload took did not complete in time", fmt.Sprintf("Task: %d, Status: %s, Error: %v", taskID, currentStatus, ctx.Err()))
+			return
+		case <-tick.C:
+		}
+	}
+}
+
 // waitForDownloadTask waits for the download task to complete.
 func waitForDownloadTask(ctx context.Context, c client.Client, taskID int64, polling models.Polling) (diagnostics diag.Diagnostics) {
 	ctx = tflog.SetField(ctx, "task.id", taskID)
@@ -326,6 +400,8 @@ func stopAndDeleteTask(ctx context.Context, c client.Client, taskType models.Tas
 		return stopAndDeleteDownloadTask(ctx, c, taskID)
 	case models.TaskTypeVirtualDisk:
 		return stopAndDeleteVirtualDiskTask(ctx, c, taskID)
+	case models.TaskTypeUpload:
+		return stopAndDeleteUploadTask(ctx, c, taskID)
 	default:
 		return fmt.Errorf("unknown task type: %s", taskType)
 	}
@@ -339,6 +415,8 @@ func WaitForTask(ctx context.Context, c client.Client, taskType models.TaskType,
 		return waitForDownloadTask(ctx, c, taskID, *polling)
 	case models.TaskTypeVirtualDisk:
 		return waitForDiskTask(ctx, c, taskID)
+	case models.TaskTypeUpload:
+		return waitForUploadTask(ctx, c, taskID, *polling)
 	default:
 		diagnostics.AddError("Unknown task type", fmt.Sprintf("Task: %d, Type: %s", taskID, taskType))
 	}

@@ -61,6 +61,7 @@ type TaskType string
 
 const (
 	TaskTypeDownload    TaskType = "download"
+	TaskTypeUpload      TaskType = "upload"
 	TaskTypeFileSystem  TaskType = "file_system"
 	TaskTypeVirtualDisk TaskType = "virtual_disk"
 )
