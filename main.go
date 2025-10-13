@@ -35,7 +35,7 @@ func main() {
 		_, err = tea.NewProgram(internal.NewAuthorization(version)).Run()
 	} else {
 		err = providerserver.Serve(context.Background(), internal.NewProvider(version), providerserver.ServeOpts{
-			Address: "registry.terraform.io/nikolalohinski/freebox",
+			Address: "registry.terraform.io/NikolaLohinski/freebox",
 			Debug:   debug,
 		})
 	}
