@@ -44,7 +44,7 @@ Finally, pick the permissions your application requires. For a basic usage the f
 terraform {
   required_providers {
     freebox = {
-      source = "registry.terraform.io/nikolalohinski/freebox"
+      source = "registry.terraform.io/NikolaLohinski/freebox"
     }
   }
 }
