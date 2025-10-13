@@ -58,6 +58,14 @@ func stopAndDeleteVirtualDiskTask(ctx context.Context, c client.Client, taskID i
 }
 
 func stopAndDeleteUploadTask(ctx context.Context, c client.Client, taskID int64) error {
+	if err := c.CancelUploadTask(ctx, taskID); err != nil {
+		if errors.Is(err, client.ErrTaskNotFound) {
+			return nil
+		}
+
+		return fmt.Errorf("cancel upload task: %w", err)
+	}
+
 	if err := c.DeleteUploadTask(ctx, taskID); err != nil {
 		if errors.Is(err, client.ErrTaskNotFound) {
 			return nil
@@ -264,6 +272,72 @@ func waitForDiskTask(ctx context.Context, c client.Client, taskID int64) (diagno
 		case <-ctx.Done():
 			diagnostics.AddError("Disk task did not complete in time", ctx.Err().Error())
 			return
+		}
+	}
+}
+
+func waitForUpload(ctx context.Context, c client.Client, taskID int64, polling models.Polling) (diagnostics diag.Diagnostics) {
+	ctx = tflog.SetField(ctx, "task.id", taskID)
+	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeUpload)
+
+	interval, diags := polling.Interval.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := polling.Timeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	tflog.Debug(ctx, "Waiting for upload task to complete...", map[string]interface{}{
+		"timeout":  timeout,
+		"interval": interval,
+	})
+
+	tick := time.NewTicker(interval)
+	defer tick.Stop()
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	var currentStatus string
+
+	for {
+		task, taskErr := c.GetUploadTask(ctx, taskID)
+		if taskErr != nil {
+			diagnostics.AddError("Failed to get upload task", taskErr.Error())
+		} else {
+			currentStatus = string(task.Status)
+
+			switch task.Status {
+			case freeboxTypes.UploadTaskStatusFailed,
+				freeboxTypes.UploadTaskStatusCancelled,
+				freeboxTypes.UploadTaskStatusConflict,
+				freeboxTypes.UploadTaskStatusTimeout:
+				diagnostics.AddError("Upload task failed", fmt.Sprintf("Task: %d, Error code: %s", taskID, task.Status))
+				return
+			case freeboxTypes.UploadTaskStatusDone:
+				return nil // Done
+			default:
+				if task.Uploaded == task.Size {
+					return nil // Done
+				}
+
+				tflog.Debug(ctx, "Upload task not done yet", map[string]interface{}{
+					"task.status": task.Status,
+				})
+				// Nothing to do
+			}
+		}
+
+		select {
+		case <-ctx.Done():
+			diagnostics.AddError("Upload took did not complete in time", fmt.Sprintf("Task: %d, Status: %s, Error: %v", taskID, currentStatus, ctx.Err()))
+			return
+		case <-tick.C:
 		}
 	}
 }

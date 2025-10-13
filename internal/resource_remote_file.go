@@ -343,11 +343,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_remote_file")),
 				},
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-						var checksum basetypes.StringValue
-						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &checksum)...)
-						rrifr.RequiresReplace = rrifr.RequiresReplace || checksum.IsNull() || checksum.IsUnknown()
-					}, "", "Replace the remote file if the checksum not defined"),
+					stringplanmodifier.RequiresReplace(),
 				},
 			},
 			"checksum": schema.StringAttribute{
@@ -599,7 +595,7 @@ func (v *remoteFileResource) createFromBytes(ctx context.Context, state provider
 	content := model.SourceBytes.ValueString()
 	destination := model.DestinationPath.ValueString()
 
-	writer, requestID, err := v.client.FileUploadStart(ctx, freeboxTypes.FileUploadStartActionInput{
+	writer, taskID, err := v.client.FileUploadStart(ctx, freeboxTypes.FileUploadStartActionInput{
 		Size:     len(content),
 		Dirname:  freeboxTypes.Base64Path(go_path.Dir(destination)),
 		Filename: go_path.Base(model.DestinationPath.ValueString()),
@@ -610,22 +606,18 @@ func (v *remoteFileResource) createFromBytes(ctx context.Context, state provider
 		return
 	}
 
-	if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeUpload, int64(requestID)); diags.HasError() {
+	if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeUpload, taskID); diags.HasError() {
 		diagnostics.Append(diags...)
 		return
 	}
 
-	// We should find the task id and store it with providerdata.
-	// Note requestID != taskID
-	/*
-		if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeUpload, taskID); diags.HasError() {
-			diagnostics.Append(diags...)
-			return
-		}
-	*/
-
 	if _, err := writer.Write([]byte(content)); err != nil {
 		diagnostics.AddError("Failed to write content", err.Error())
+		return
+	}
+
+	if diags := waitForUpload(ctx, v.client, taskID, uploadPolling); diags.HasError() {
+		diagnostics.Append(diags...)
 		return
 	}
 
@@ -634,19 +626,15 @@ func (v *remoteFileResource) createFromBytes(ctx context.Context, state provider
 		return
 	}
 
-	// We should stop, delete and unset the task.
-	// Note requestID != taskID
-	/*
-		if err := stopAndDeleteTask(ctx, v.client, models.TaskTypeUpload, int64(writer.RequestID)); err != nil {
-			diagnostics.AddError("Failed to stop and delete task", fmt.Sprintf("Task %d, Type: %s, Error: %s", int64(writer.RequestID), models.TaskTypeUpload, err.Error()))
-			return
-		}
+	if err := stopAndDeleteTask(ctx, v.client, models.TaskTypeUpload, taskID); err != nil {
+		diagnostics.AddError("Failed to stop and delete task", fmt.Sprintf("Task %d, Type: %s, Error: %s", taskID, models.TaskTypeUpload, err.Error()))
+		return
+	}
 
-		if diags := providerdata.UnsetCurrentTask(ctx, state); diags.HasError() {
-			diagnostics.Append(diags...)
-			return
-		}
-	*/
+	if diags := providerdata.UnsetCurrentTask(ctx, state); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
 
 	return nil
 }
