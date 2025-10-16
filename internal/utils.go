@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/nikolalohinski/free-go/client"
@@ -212,7 +213,7 @@ func waitForFileSystemTask(ctx context.Context, client client.Client, taskID int
 	}
 }
 
-func waitForDiskTask(ctx context.Context, c client.Client, taskID int64) (diagnostics diag.Diagnostics) {
+func waitForDiskTask(ctx context.Context, c client.Client, taskID int64, timeout timetypes.GoDuration) (diagnostics diag.Diagnostics) {
 	ctx = tflog.SetField(ctx, "task.id", taskID)
 	ctx = tflog.SetField(ctx, "task.type", models.TaskTypeFileSystem)
 
@@ -239,6 +240,15 @@ func waitForDiskTask(ctx context.Context, c client.Client, taskID int64) (diagno
 		}
 		return
 	}
+
+	timeoutDuration, diags := timeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeoutDuration)
+	defer cancel()
 
 	for {
 		select {
@@ -338,7 +348,7 @@ func WaitForTask(ctx context.Context, c client.Client, taskType models.TaskType,
 	case models.TaskTypeDownload:
 		return waitForDownloadTask(ctx, c, taskID, *polling)
 	case models.TaskTypeVirtualDisk:
-		return waitForDiskTask(ctx, c, taskID)
+		return waitForDiskTask(ctx, c, taskID, polling.Timeout)
 	default:
 		diagnostics.AddError("Unknown task type", fmt.Sprintf("Task: %d, Type: %s", taskID, taskType))
 	}

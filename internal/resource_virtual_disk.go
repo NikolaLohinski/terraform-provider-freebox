@@ -94,6 +94,8 @@ type virtualDiskPollingModel struct {
 	Delete types.Object `tfsdk:"delete"`
 	// Move is the polling configuration for move operation.
 	Move types.Object `tfsdk:"move"`
+	// Resize is the polling configuration for resize operation.
+	Resize types.Object `tfsdk:"resize"`
 }
 
 func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
@@ -101,6 +103,7 @@ func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
 		"create": models.NewPollingSpecModel(time.Second, time.Minute),
 		"delete": models.NewPollingSpecModel(time.Second, time.Minute),
 		"move":   models.NewPollingSpecModel(time.Second, time.Minute),
+		"resize": models.NewPollingSpecModel(time.Second, time.Minute),
 	})
 }
 
@@ -127,6 +130,13 @@ func (v virtualDiskPollingModel) ResourceAttributes() map[string]schema.Attribut
 			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
 			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
 		},
+		"resize": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Polling configuration for resize operation",
+			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
+		},
 	}
 }
 
@@ -135,6 +145,7 @@ func (v virtualDiskPollingModel) AttrTypes() map[string]attr.Type {
 		"create": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"move":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"delete": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"resize": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 	}
 }
 
@@ -244,7 +255,21 @@ func (v *virtualDiskResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	if diags := waitForDiskTask(ctx, v.client, taskID); diags.HasError() {
+	var polling virtualDiskPollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	var createPolling models.Polling
+
+	if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForDiskTask(ctx, v.client, taskID, createPolling.Timeout); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
@@ -411,7 +436,14 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 
-		if diags := waitForDiskTask(ctx, v.client, taskID); diags.HasError() {
+		var createPolling models.Polling
+
+		if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
+		if diags := waitForDiskTask(ctx, v.client, taskID, createPolling.Timeout); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
@@ -489,7 +521,21 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 
-		if diags := waitForDiskTask(ctx, v.client, taskID); diags.HasError() {
+		var polling virtualDiskPollingModel
+
+		if diags := newModel.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
+		var resizePolling models.Polling
+
+		if diags := polling.Resize.As(ctx, &resizePolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
+		if diags := waitForDiskTask(ctx, v.client, taskID, resizePolling.Timeout); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
