@@ -12,3 +12,7 @@ resource "freebox_port_forwarding" "example" {
 output "hostname" {
   value = resource.freebox_port_forwarding.example.hostname
 }
+
+output "reachable" {
+  value = resource.freebox_port_forwarding.example.host.reachable
+}
