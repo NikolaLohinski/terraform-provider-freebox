@@ -255,7 +255,21 @@ func (v *virtualDiskResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	if diags := waitForDiskTask(ctx, v.client, taskID); diags.HasError() {
+	var polling virtualDiskPollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	var createPolling models.Polling
+
+	if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForDiskTask(ctx, v.client, taskID, createPolling.Timeout); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
 		return
 	}
@@ -422,7 +436,14 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 
-		if diags := waitForDiskTask(ctx, v.client, taskID); diags.HasError() {
+		var createPolling models.Polling
+
+		if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
+		if diags := waitForDiskTask(ctx, v.client, taskID, createPolling.Timeout); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
@@ -500,7 +521,21 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 
-		if diags := waitForDiskTask(ctx, v.client, taskID); diags.HasError() {
+		var polling virtualDiskPollingModel
+
+		if diags := newModel.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
+		var resizePolling models.Polling
+
+		if diags := polling.Resize.As(ctx, &resizePolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		}
+
+		if diags := waitForDiskTask(ctx, v.client, taskID, resizePolling.Timeout); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
