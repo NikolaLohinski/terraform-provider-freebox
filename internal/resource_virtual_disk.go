@@ -94,6 +94,8 @@ type virtualDiskPollingModel struct {
 	Delete types.Object `tfsdk:"delete"`
 	// Move is the polling configuration for move operation.
 	Move types.Object `tfsdk:"move"`
+	// Resize is the polling configuration for resize operation.
+	Resize types.Object `tfsdk:"resize"`
 }
 
 func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
@@ -101,6 +103,7 @@ func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
 		"create": models.NewPollingSpecModel(time.Second, time.Minute),
 		"delete": models.NewPollingSpecModel(time.Second, time.Minute),
 		"move":   models.NewPollingSpecModel(time.Second, time.Minute),
+		"resize": models.NewPollingSpecModel(time.Second, time.Minute),
 	})
 }
 
@@ -127,6 +130,13 @@ func (v virtualDiskPollingModel) ResourceAttributes() map[string]schema.Attribut
 			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
 			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
 		},
+		"resize": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Polling configuration for resize operation",
+			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
+		},
 	}
 }
 
@@ -135,6 +145,7 @@ func (v virtualDiskPollingModel) AttrTypes() map[string]attr.Type {
 		"create": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"move":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 		"delete": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"resize": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 	}
 }
 
