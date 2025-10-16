@@ -30,16 +30,15 @@ output "hostname" {
 
 - `enabled` (Boolean) Status of the forwarding
 - `ip_protocol` (String) Protocol to handle
+- `port_range_start` (Number) Start boundary of the port range to forward
 - `target_ip` (String) Local IP of the local port forwarding target
 
 ### Optional
 
 - `comment` (String) Additional comment associated with the rule
-- `port_range_end` (Number) End boundary of the port range to forward. Conflicts with `source_port` and `target_port`
-- `port_range_start` (Number) Start boundary of the port range to forward. Conflicts with `source_port` and `target_port`
+- `port_range_end` (Number) End boundary of the port range to forward.
 - `source_ip` (String) Local IP of the local port forwarding target. If left unset or set to 0.0.0.0, the rule will apply to any incoming IP
-- `source_port` (Number) Single source port to forward. Conflicts with `port_range_start` and `port_range_end`
-- `target_port` (Number) Single target port to forward to. Conflicts with `port_range_start` and `port_range_end`
+- `target_port_start` (Number) Start boundary of the target port range to forward to
 
 ### Read-Only
 

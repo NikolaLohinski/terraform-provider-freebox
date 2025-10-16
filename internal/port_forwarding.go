@@ -36,41 +36,46 @@ type portForwardingResource struct {
 
 // virtualMachineModel describes the resource data model.
 type portForwardingModel struct {
-	ID             types.Int64  `tfsdk:"id"`
-	Enabled        types.Bool   `tfsdk:"enabled"`
-	IPProtocol     types.String `tfsdk:"ip_protocol"`
-	PortRangeStart types.Int64  `tfsdk:"port_range_start"`
-	SourcePort     types.Int64  `tfsdk:"source_port"`
-	PortRangeEnd   types.Int64  `tfsdk:"port_range_end"`
-	TargetPort     types.Int64  `tfsdk:"target_port"`
-	SourceIP       types.String `tfsdk:"source_ip"`
-	TargetIP       types.String `tfsdk:"target_ip"`
-	Comment        types.String `tfsdk:"comment"`
-	Hostname       types.String `tfsdk:"hostname"`
+	ID              types.Int64  `tfsdk:"id"`
+	Enabled         types.Bool   `tfsdk:"enabled"`
+	IPProtocol      types.String `tfsdk:"ip_protocol"`
+	PortRangeStart  types.Int64  `tfsdk:"port_range_start"`
+	PortRangeEnd    types.Int64  `tfsdk:"port_range_end"`
+	TargetPortStart types.Int64  `tfsdk:"target_port_start"`
+	SourceIP        types.String `tfsdk:"source_ip"`
+	TargetIP        types.String `tfsdk:"target_ip"`
+	Comment         types.String `tfsdk:"comment"`
+	Hostname        types.String `tfsdk:"hostname"`
 }
 
 func (p *portForwardingModel) toPayload() freeboxTypes.PortForwardingRulePayload {
 	enabled := p.Enabled.ValueBool()
 	payload := freeboxTypes.PortForwardingRulePayload{
-		Enabled:    &enabled,
-		IPProtocol: p.IPProtocol.ValueString(),
-		LanIP:      p.TargetIP.ValueString(),
+		Enabled:      &enabled,
+		IPProtocol:   p.IPProtocol.ValueString(),
+		LanIP:        p.TargetIP.ValueString(),
+		WanPortStart: p.PortRangeStart.ValueInt64(),
 	}
-	if !(p.PortRangeStart.IsNull() || p.PortRangeEnd.IsUnknown()) {
-		payload.LanPort = p.PortRangeStart.ValueInt64()
-		payload.WanPortStart = p.PortRangeStart.ValueInt64()
-		payload.WanPortEnd = p.PortRangeEnd.ValueInt64()
+	if p.PortRangeEnd.IsNull() || p.PortRangeEnd.IsUnknown() {
+		payload.WanPortEnd = p.PortRangeStart.ValueInt64() // Default to the same value as the start
 	} else {
-		payload.LanPort = p.TargetPort.ValueInt64()
-		payload.WanPortStart = p.SourcePort.ValueInt64()
-		payload.WanPortEnd = p.SourcePort.ValueInt64()
+		payload.WanPortEnd = p.PortRangeEnd.ValueInt64()
 	}
+
+	if p.TargetPortStart.IsNull() || p.TargetPortStart.IsUnknown() {
+		payload.LanPort = p.PortRangeStart.ValueInt64() // Default to the same value as the start
+	} else {
+		payload.LanPort = p.TargetPortStart.ValueInt64()
+	}
+
 	if !p.SourceIP.IsNull() && !p.SourceIP.IsUnknown() {
 		payload.SourceIP = p.SourceIP.ValueString()
 	}
+
 	if !p.Comment.IsNull() && !p.Comment.IsUnknown() {
 		payload.Comment = p.Comment.ValueString()
 	}
+
 	return payload
 }
 
@@ -83,14 +88,19 @@ func (p *portForwardingModel) fromClientType(rule freeboxTypes.PortForwardingRul
 	}
 	p.IPProtocol = basetypes.NewStringValue(rule.IPProtocol)
 	p.TargetIP = basetypes.NewStringValue(rule.LanIP)
+
 	p.PortRangeStart = basetypes.NewInt64Value(rule.WanPortStart)
 	p.PortRangeEnd = basetypes.NewInt64Value(rule.WanPortEnd)
+	p.TargetPortStart = basetypes.NewInt64Value(rule.LanPort)
+
 	if rule.Comment != "" {
 		p.Comment = basetypes.NewStringValue(rule.Comment)
 	}
+
 	if rule.SourceIP != "" {
 		p.SourceIP = basetypes.NewStringValue(rule.SourceIP)
 	}
+
 	p.Hostname = basetypes.NewStringValue(rule.Hostname)
 }
 
@@ -122,39 +132,26 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				)},
 			},
 			"port_range_start": schema.Int64Attribute{
-				MarkdownDescription: "Start boundary of the port range to forward. Conflicts with `source_port` and `target_port`",
-				Optional:            true,
+				MarkdownDescription: "Start boundary of the port range to forward",
+				Required:            true,
 				Validators: []validator.Int64{
-					int64validator.AtLeast(1),
-					int64validator.AtMost(65353),
-					int64validator.ConflictsWith(path.MatchRoot("source_port") , path.MatchRoot("target_port")),
+					int64validator.Between(32768, 65353),
 				},
 			},
 			"port_range_end": schema.Int64Attribute{
-				MarkdownDescription: "End boundary of the port range to forward. Conflicts with `source_port` and `target_port`",
+				MarkdownDescription: "End boundary of the port range to forward.",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
-					int64validator.AtLeast(32768),
-					int64validator.AtMost(65353),
-					int64validator.ConflictsWith(path.MatchRoot("source_port"), path.MatchRoot("target_port")),
+					int64validator.Between(32768, 65353),
 				},
 			},
-			"source_port": schema.Int64Attribute{
-				MarkdownDescription: "Single source port to forward. Conflicts with `port_range_start` and `port_range_end`",
+			"target_port_start": schema.Int64Attribute{
+				MarkdownDescription: "Start boundary of the target port range to forward to",
 				Optional:            true,
+				Computed:            true,
 				Validators: []validator.Int64{
-					int64validator.AtLeast(32768),
-					int64validator.AtMost(65353),
-					int64validator.ConflictsWith(path.MatchRoot("port_range_start"), path.MatchRoot("port_range_end")),
-				},
-			},
-			"target_port": schema.Int64Attribute{
-				MarkdownDescription: "Single target port to forward to. Conflicts with `port_range_start` and `port_range_end`",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.AtLeast(1),
-					int64validator.AtMost(65353),
-					int64validator.ConflictsWith(path.MatchRoot("port_range_start"), path.MatchRoot("port_range_end")),
+					int64validator.Between(1, 65353),
 				},
 			},
 			"source_ip": schema.StringAttribute{
@@ -188,38 +185,15 @@ func (v *portForwardingResource) ValidateConfig(ctx context.Context, req resourc
 		return
 	}
 
-	if (data.PortRangeStart.IsNull() || data.PortRangeEnd.IsUnknown()) &&
-		(data.PortRangeStart.IsNull() || data.PortRangeStart.IsUnknown()) &&
-		(data.SourcePort.IsNull() || data.SourcePort.IsUnknown()) &&
-		(data.TargetPort.IsNull() || data.TargetPort.IsUnknown()) {
-		resp.Diagnostics.AddError(
-			"Missing required fields", "Neither `port_range_start` and `port_range_end` or `source_port` and `target_port` have been defined")
-		return
-	}
-	if (data.PortRangeStart.IsNull() || data.PortRangeEnd.IsUnknown()) &&
-		(data.PortRangeStart.IsNull() || data.PortRangeStart.IsUnknown()) {
-		if data.SourcePort.IsNull() || data.SourcePort.IsUnknown() {
-			resp.Diagnostics.AddError(
-				"Missing `source_port` field", "`target_port` is defined but `source_port` is not")
-			return
-		}
-		if data.TargetPort.IsNull() || data.TargetPort.IsUnknown() {
-			resp.Diagnostics.AddError(
-				"Missing `target_port` field", "`source_port` is defined but `target_port` is not")
-			return
-		}
-	}
-	if (data.SourcePort.IsNull() || data.SourcePort.IsUnknown()) &&
-		(data.TargetPort.IsNull() || data.TargetPort.IsUnknown()) {
-		if data.PortRangeStart.IsNull() || data.PortRangeStart.IsUnknown() {
-			resp.Diagnostics.AddError(
-				"Missing `port_range_start` field", "`port_range_end` is defined but `port_range_start` is not")
-			return
-		}
-		if data.PortRangeEnd.IsNull() || data.PortRangeEnd.IsUnknown() {
-			resp.Diagnostics.AddError(
-				"Missing `port_range_end` field", "`port_range_start` is defined but `port_range_end` is not")
-			return
+	if !data.TargetPortStart.IsNull() && !data.TargetPortStart.IsUnknown() {
+		end := data.PortRangeEnd.ValueInt64()
+		start := data.PortRangeStart.ValueInt64()
+		if end != 0 && end != start {
+			if data.TargetPortStart.ValueInt64() != start {
+				resp.Diagnostics.AddError(
+					"Invalid target port range", "The target port range is not the same as the port range start")
+				return
+			}
 		}
 	}
 }
