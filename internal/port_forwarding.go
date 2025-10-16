@@ -127,22 +127,25 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				Validators: []validator.Int64{
 					int64validator.AtLeast(1),
 					int64validator.AtMost(65353),
-				},
-			},
-			"source_port": schema.Int64Attribute{
-				MarkdownDescription: "Single source port to forward. Conflicts with `port_range_start` and `port_range_end`",
-				Optional:            true,
-				Validators: []validator.Int64{
-					int64validator.AtLeast(1),
-					int64validator.AtMost(65353),
+					int64validator.ConflictsWith(path.MatchRoot("source_port") , path.MatchRoot("target_port")),
 				},
 			},
 			"port_range_end": schema.Int64Attribute{
 				MarkdownDescription: "End boundary of the port range to forward. Conflicts with `source_port` and `target_port`",
 				Optional:            true,
 				Validators: []validator.Int64{
-					int64validator.AtLeast(1),
+					int64validator.AtLeast(32768),
 					int64validator.AtMost(65353),
+					int64validator.ConflictsWith(path.MatchRoot("source_port"), path.MatchRoot("target_port")),
+				},
+			},
+			"source_port": schema.Int64Attribute{
+				MarkdownDescription: "Single source port to forward. Conflicts with `port_range_start` and `port_range_end`",
+				Optional:            true,
+				Validators: []validator.Int64{
+					int64validator.AtLeast(32768),
+					int64validator.AtMost(65353),
+					int64validator.ConflictsWith(path.MatchRoot("port_range_start"), path.MatchRoot("port_range_end")),
 				},
 			},
 			"target_port": schema.Int64Attribute{
@@ -151,6 +154,7 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				Validators: []validator.Int64{
 					int64validator.AtLeast(1),
 					int64validator.AtMost(65353),
+					int64validator.ConflictsWith(path.MatchRoot("port_range_start"), path.MatchRoot("port_range_end")),
 				},
 			},
 			"source_ip": schema.StringAttribute{
