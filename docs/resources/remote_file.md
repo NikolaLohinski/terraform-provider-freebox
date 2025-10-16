@@ -29,6 +29,7 @@ output "filesystem_task_id" {
 - `checksum` (String) Checksum to verify the hash of the downloaded file
 - `extract` (Attributes) Whether to extract the file after downloading (see [below for nested schema](#nestedatt--extract))
 - `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
+- `source_bytes` (String) The content of the file
 - `source_remote_file` (String) The path to the file on the Freebox to copy
 - `source_url` (String) The URL of the file to download
 
@@ -73,6 +74,7 @@ Optional:
 - `download` (Attributes) Creation polling configuration (see [below for nested schema](#nestedatt--polling--download))
 - `extract` (Attributes) Extraction polling configuration (see [below for nested schema](#nestedatt--polling--extract))
 - `move` (Attributes) Move polling configuration (see [below for nested schema](#nestedatt--polling--move))
+- `upload` (Attributes) Upload polling configuration (see [below for nested schema](#nestedatt--polling--upload))
 
 <a id="nestedatt--polling--checksum_compute"></a>
 ### Nested Schema for `polling.checksum_compute`
@@ -121,6 +123,15 @@ Optional:
 
 <a id="nestedatt--polling--move"></a>
 ### Nested Schema for `polling.move`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--upload"></a>
+### Nested Schema for `polling.upload`
 
 Optional:
 

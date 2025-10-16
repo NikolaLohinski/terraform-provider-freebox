@@ -66,11 +66,11 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		}
 	`)
 	existingDisk = file{
-		filename:  "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
-		directory: "VMs",
-		filepath:  root + "/VMs/terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
-		digest:    "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
-		source:    "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
+		filename:              "terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
+		directory:             "VMs",
+		filepath:              root + "/VMs/terraform-provider-freebox-alpine-3.20.0-aarch64.qcow2",
+		digest:                "sha256:c7adb3d1fa28cd2abc208e83358a7d065116c6fce1c631ff1d03ace8a992bb69",
+		source_url_or_content: "https://raw.githubusercontent.com/NikolaLohinski/terraform-provider-freebox/main/examples/alpine-virt-3.20.0-aarch64.qcow2",
 	}
 
 	fc, err := client.New(endpoint, version)
@@ -94,7 +94,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 		Expect(err).To(Equal(client.ErrPathNotFound))
 		// Download disk
 		taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
-			DownloadURLs:      []string{existingDisk.source},
+			DownloadURLs:      []string{existingDisk.source_url_or_content},
 			Hash:              existingDisk.digest,
 			DownloadDirectory: root + "/" + existingDisk.directory,
 			Filename:          existingDisk.filename,
@@ -133,11 +133,11 @@ func Must[T interface{}](r T, err error) T {
 }
 
 type file struct {
-	filename  string
-	directory string
-	filepath  string
-	digest    string
-	source    string
+	filename              string
+	directory             string
+	filepath              string
+	digest                string
+	source_url_or_content string
 }
 
 var _ = BeforeEach(func(ctx SpecContext) {
