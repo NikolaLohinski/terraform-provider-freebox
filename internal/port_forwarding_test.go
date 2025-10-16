@@ -31,7 +31,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 									comment 	      = "` + name + `"
 									source_ip         = "0.0.0.0"
 									port_range_start  = 32768
-									target_port_start = 1234
+									target_port       = 1234
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
@@ -39,7 +39,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "ip_protocol", "tcp"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_start", "32768"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_end", "32768"),
-								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port_start", "1234"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port", "1234"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_ip", "192.168.1.1"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "comment", name),
 								resource.TestCheckResourceAttrWith("freebox_port_forwarding."+name, "id", func(value string) error {
@@ -71,7 +71,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 									comment 	      = "` + name + `"
 									source_ip         = "0.0.0.0"
 									port_range_start  = 32768
-									target_port_start = 1235
+									target_port       = 1235
 								}
 							`,
 							ConfigPlanChecks: resource.ConfigPlanChecks{
@@ -84,7 +84,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "ip_protocol", "tcp"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_start", "32768"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_end", "32768"),
-								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port_start", "1235"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port", "1235"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_ip", "192.168.1.1"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "comment", name),
 								resource.TestCheckResourceAttrWith("freebox_port_forwarding."+name, "id", func(value string) error {
@@ -101,6 +101,52 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 									Expect(portForwardingRule).ToNot(BeNil())
 									Expect(portForwardingRule.WanPortStart).To(Equal(int64(32768)))
 									Expect(portForwardingRule.WanPortEnd).To(Equal(int64(32768)))
+									Expect(portForwardingRule.LanPort).To(Equal(int64(1235)))
+
+									return nil
+								}),
+							),
+						},
+						{
+							Config: providerBlock + `
+								resource "freebox_port_forwarding" "` + name + `" {
+									enabled 		  = true
+									ip_protocol       = "tcp"
+									target_ip         = "192.168.1.1"
+									comment 	      = "` + name + `"
+									source_ip         = "0.0.0.0"
+									port_range_start  = 32769
+									port_range_end    = 32769
+									target_port       = 1235
+								}
+							`,
+							ConfigPlanChecks: resource.ConfigPlanChecks{
+								PreApply: []plancheck.PlanCheck{
+									plancheck.ExpectResourceAction("freebox_port_forwarding."+name, plancheck.ResourceActionUpdate),
+								},
+							},
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "enabled", "true"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "ip_protocol", "tcp"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_start", "32769"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_end", "32769"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port", "1235"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_ip", "192.168.1.1"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "comment", name),
+								resource.TestCheckResourceAttrWith("freebox_port_forwarding."+name, "id", func(value string) error {
+									id, err := strconv.Atoi(value)
+									if err != nil {
+										return err
+									}
+
+									portForwardingRule, err := freeboxClient.GetPortForwardingRule(ctx, int64(id))
+									if err != nil {
+										return err
+									}
+
+									Expect(portForwardingRule).ToNot(BeNil())
+									Expect(portForwardingRule.WanPortStart).To(Equal(int64(32769)))
+									Expect(portForwardingRule.WanPortEnd).To(Equal(int64(32769)))
 									Expect(portForwardingRule.LanPort).To(Equal(int64(1235)))
 
 									return nil
@@ -145,7 +191,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "ip_protocol", "tcp"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_start", "32768"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_end", "32769"),
-								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port_start", "32768"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port", "32768"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_ip", "192.168.1.1"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "comment", name),
 								resource.TestCheckResourceAttrWith("freebox_port_forwarding."+name, "id", func(value string) error {

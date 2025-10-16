@@ -6,7 +6,7 @@ resource "freebox_port_forwarding" "example" {
   source_ip         = "0.0.0.0"
   port_range_start  = 32443
   port_range_end    = 32443
-  target_port_start = 443
+  target_port       = 443
 }
 
 output "hostname" {
