@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -34,18 +35,326 @@ type portForwardingResource struct {
 	client client.Client
 }
 
+type portForwardingLanHostL2IdentModel struct {
+	ID   types.String `tfsdk:"id"`
+	Type types.String `tfsdk:"type"`
+}
+
+func (o portForwardingLanHostL2IdentModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"id": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "ID of the L2 ident",
+		},
+		"type": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Type of the L2 ident",
+		},
+	}
+}
+
+func (o portForwardingLanHostL2IdentModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"id":   types.StringType,
+		"type": types.StringType,
+	}
+}
+
+func (o portForwardingLanHostL2IdentModel) FromClientType(l2ident freeboxTypes.L2Ident) basetypes.ObjectValue {
+	return basetypes.NewObjectValueMust(o.AttrTypes(), map[string]attr.Value{
+		"id":   basetypes.NewStringValue(l2ident.ID),
+		"type": basetypes.NewStringValue(string(l2ident.Type)),
+	})
+}
+
+type portForwardingLanHostL3ConnectivityModel struct {
+	Address   types.String `tfsdk:"address"`
+	Active    types.Bool   `tfsdk:"active"`
+	Reachable types.Bool   `tfsdk:"reachable"`
+	Type      types.String `tfsdk:"type"`
+}
+
+func (o portForwardingLanHostL3ConnectivityModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"address": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Address of the L3 connectivity",
+		},
+		"active": schema.BoolAttribute{
+			Optional:            true,
+			MarkdownDescription: "Whether the L3 connectivity is active",
+		},
+		"reachable": schema.BoolAttribute{
+			Optional:            true,
+			MarkdownDescription: "Whether the L3 connectivity is reachable",
+		},
+		"type": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Type of the L3 connectivity",
+		},
+	}
+}
+
+func (o portForwardingLanHostL3ConnectivityModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"address":   types.StringType,
+		"active":    types.BoolType,
+		"reachable": types.BoolType,
+		"type":      types.StringType,
+	}
+}
+
+func (o portForwardingLanHostL3ConnectivityModel) FromClientType(connectivity freeboxTypes.L3Connectivity) basetypes.ObjectValue {
+	return basetypes.NewObjectValueMust(o.AttrTypes(), map[string]attr.Value{
+		"address":   basetypes.NewStringValue(connectivity.Address),
+		"active":    basetypes.NewBoolValue(connectivity.Active),
+		"reachable": basetypes.NewBoolValue(connectivity.Reachable),
+		"type":      basetypes.NewStringValue(string(connectivity.Type)),
+	})
+}
+
+type portForwardingLanHostNameModel struct {
+	Name   types.String `tfsdk:"name"`
+	Source types.String `tfsdk:"source"`
+}
+
+func (o portForwardingLanHostNameModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"name": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Name of the host",
+		},
+		"source": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Source of the host",
+		},
+	}
+}
+
+func (o portForwardingLanHostNameModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"name":   types.StringType,
+		"source": types.StringType,
+	}
+}
+
+func (o portForwardingLanHostNameModel) FromClientType(name freeboxTypes.HostName) basetypes.ObjectValue {
+	return basetypes.NewObjectValueMust(o.AttrTypes(), map[string]attr.Value{
+		"name":   basetypes.NewStringValue(name.Name),
+		"source": basetypes.NewStringValue(name.Source),
+	})
+}
+
+type portForwardingLanHostNetworkControlModel struct {
+	ProfileID   types.Int64  `tfsdk:"profile_id"`
+	Name        types.String `tfsdk:"name"`
+	CurrentMode types.String `tfsdk:"current_mode"`
+}
+
+func (o portForwardingLanHostNetworkControlModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"profile_id": schema.Int64Attribute{
+			Computed:            true,
+			MarkdownDescription: "ID of the profile this device is associated with",
+		},
+		"name": schema.StringAttribute{
+			Computed:            true,
+			MarkdownDescription: "Name of the profile this device is associated with",
+		},
+		"current_mode": schema.StringAttribute{
+			Computed:            true,
+			MarkdownDescription: "Mode described in Network Control Object",
+		},
+	}
+}
+
+func (o portForwardingLanHostNetworkControlModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"profile_id":   types.Int64Type,
+		"name":         types.StringType,
+		"current_mode": types.StringType,
+	}
+}
+
+func (o portForwardingLanHostNetworkControlModel) FromClientType(networkControl freeboxTypes.LanHostNetworkControl) basetypes.ObjectValue {
+	return basetypes.NewObjectValueMust(o.AttrTypes(), map[string]attr.Value{
+		"profile_id":   basetypes.NewInt64Value(int64(networkControl.ProfileID)),
+		"name":         basetypes.NewStringValue(networkControl.Name),
+		"current_mode": basetypes.NewStringValue(networkControl.CurrentMode),
+	})
+}
+
+type portForwardingLanHostModel struct {
+	ID                   types.String  `tfsdk:"id"`
+	Active               types.Bool    `tfsdk:"active"`
+	Reachable            types.Bool    `tfsdk:"reachable"`
+	Persistent           types.Bool    `tfsdk:"persistent"`
+	PrimaryNameManual    types.Bool    `tfsdk:"primary_name_manual"`
+	VendorName           types.String  `tfsdk:"vendor_name"`
+	HostType             types.String  `tfsdk:"host_type"`
+	Interface            types.String  `tfsdk:"interface"`
+	FirstActivitySeconds types.Float64 `tfsdk:"first_activity_seconds"`
+	PrimaryName          types.String  `tfsdk:"primary_name"`
+	DefaultName          types.String  `tfsdk:"default_name"`
+	L2Ident              types.Object  `tfsdk:"l2ident"`
+	L3Connectivities     types.List    `tfsdk:"l3connectivities"`
+	Names                types.List    `tfsdk:"names"`
+	NetworkControl       types.Object  `tfsdk:"network_control"`
+}
+
+func (o portForwardingLanHostModel) ResourceAttributes() map[string]schema.Attribute {
+	return map[string]schema.Attribute{
+		"id": schema.StringAttribute{
+			Computed:            true,
+			MarkdownDescription: "ID of the host",
+		},
+		"active": schema.BoolAttribute{
+			Computed:            true,
+			MarkdownDescription: "If true the host sends traffic to the Freebox",
+		},
+		"reachable": schema.BoolAttribute{
+			Computed:            true,
+			MarkdownDescription: "If true the host can receive traffic from the Freebox",
+		},
+		"persistent": schema.BoolAttribute{
+			Optional:            true,
+			MarkdownDescription: "If true the host is always shown even if it has not been active since the Freebox startup",
+		},
+		"primary_name_manual": schema.BoolAttribute{
+			Computed:            true,
+			MarkdownDescription: "If true the primary name has been set manually",
+		},
+		"vendor_name": schema.StringAttribute{
+			Computed:            true,
+			MarkdownDescription: "Host vendor name (from the mac address)",
+		},
+		"host_type": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "When possible, the Freebox will try to guess the host_type, but you can manually override this to the correct value",
+		},
+		"interface": schema.StringAttribute{
+			Computed:            true,
+			MarkdownDescription: "Interface of the host",
+		},
+		"first_activity_seconds": schema.Float64Attribute{
+			Computed:            true,
+			MarkdownDescription: "First time the host sent traffic, or null if it wasn’t seen before this field was added.",
+		},
+		"primary_name": schema.StringAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Host primary name (chosen from the list of available names, or manually set by user)",
+		},
+		"default_name": schema.StringAttribute{
+			Optional:            true,
+			MarkdownDescription: "Default name of the host",
+		},
+		"l2ident": schema.SingleNestedAttribute{
+			Computed:            true,
+			MarkdownDescription: "Layer 2 network id and its type",
+			Attributes:          portForwardingLanHostL2IdentModel{}.ResourceAttributes(),
+		},
+		"l3connectivities": schema.ListNestedAttribute{
+			Computed:            true,
+			MarkdownDescription: "List of available layer 3 network connections",
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: portForwardingLanHostL3ConnectivityModel{}.ResourceAttributes(),
+			},
+		},
+		"names": schema.ListNestedAttribute{
+			Computed:            true,
+			MarkdownDescription: "List of available names, and their source",
+			NestedObject: schema.NestedAttributeObject{
+				Attributes: portForwardingLanHostNameModel{}.ResourceAttributes(),
+			},
+		},
+		"network_control": schema.SingleNestedAttribute{
+			Computed:            true,
+			MarkdownDescription: "If device is associated with a profile, contains profile summary.",
+			Attributes:          portForwardingLanHostNetworkControlModel{}.ResourceAttributes(),
+		},
+	}
+}
+
+func (o portForwardingLanHostModel) AttrTypes() map[string]attr.Type {
+	return map[string]attr.Type{
+		"id":                     types.StringType,
+		"active":                 types.BoolType,
+		"reachable":              types.BoolType,
+		"persistent":             types.BoolType,
+		"primary_name_manual":    types.BoolType,
+		"vendor_name":            types.StringType,
+		"host_type":              types.StringType,
+		"interface":              types.StringType,
+		"first_activity_seconds": types.Float64Type,
+		"primary_name":           types.StringType,
+		"default_name":           types.StringType,
+		"l2ident":                types.ObjectType{}.WithAttributeTypes(portForwardingLanHostL2IdentModel{}.AttrTypes()),
+		"l3connectivities":       types.ListType{}.WithElementType(types.ObjectType{}.WithAttributeTypes(portForwardingLanHostL3ConnectivityModel{}.AttrTypes())),
+		"names":                  types.ListType{}.WithElementType(types.ObjectType{}.WithAttributeTypes(portForwardingLanHostNameModel{}.AttrTypes())),
+		"network_control":        types.ObjectType{}.WithAttributeTypes(portForwardingLanHostNetworkControlModel{}.AttrTypes()),
+	}
+}
+
+func (o portForwardingLanHostModel) FromClientType(host freeboxTypes.LanInterfaceHost) basetypes.ObjectValue {
+	l3connectivities := make([]attr.Value, len(host.L3Connectivities))
+	for i, connectivity := range host.L3Connectivities {
+		l3connectivities[i] = portForwardingLanHostL3ConnectivityModel{}.FromClientType(connectivity)
+	}
+
+	names := make([]attr.Value, len(host.Names))
+	for i, name := range host.Names {
+		names[i] = portForwardingLanHostNameModel{}.FromClientType(name)
+	}
+
+	var firstActivityValue basetypes.Float64Value
+
+	if host.FirstActivity.IsZero() {
+		firstActivityValue = basetypes.NewFloat64Null()
+	} else {
+		firstActivityValue = basetypes.NewFloat64Value(float64(host.FirstActivity.UnixMicro() / 1000000))
+	}
+
+	var networkControlValue basetypes.ObjectValue
+	if host.NetworkControl != nil {
+		networkControlValue = portForwardingLanHostNetworkControlModel{}.FromClientType(*host.NetworkControl)
+	} else {
+		networkControlValue = basetypes.NewObjectNull(portForwardingLanHostNetworkControlModel{}.AttrTypes())
+	}
+
+	return basetypes.NewObjectValueMust(o.AttrTypes(), map[string]attr.Value{
+		"id":                     basetypes.NewStringValue(host.ID),
+		"active":                 basetypes.NewBoolValue(host.Active),
+		"reachable":              basetypes.NewBoolValue(host.Reachable),
+		"persistent":             basetypes.NewBoolValue(host.Persistent),
+		"primary_name_manual":    basetypes.NewBoolValue(host.PrimaryNameManual),
+		"vendor_name":            basetypes.NewStringValue(host.VendorName),
+		"host_type":              basetypes.NewStringValue(string(host.Type)),
+		"interface":              basetypes.NewStringValue(host.Interface),
+		"first_activity_seconds": firstActivityValue,
+		"primary_name":           basetypes.NewStringValue(host.PrimaryName),
+		"default_name":           basetypes.NewStringValue(host.DefaultName),
+		"l2ident":                portForwardingLanHostL2IdentModel{}.FromClientType(host.L2Ident),
+		"l3connectivities":       basetypes.NewListValueMust(types.ObjectType{}.WithAttributeTypes(portForwardingLanHostL3ConnectivityModel{}.AttrTypes()), l3connectivities),
+		"names":                  basetypes.NewListValueMust(types.ObjectType{}.WithAttributeTypes(portForwardingLanHostNameModel{}.AttrTypes()), names),
+		"network_control":        networkControlValue,
+	})
+}
+
 // virtualMachineModel describes the resource data model.
 type portForwardingModel struct {
-	ID              types.Int64  `tfsdk:"id"`
-	Enabled         types.Bool   `tfsdk:"enabled"`
-	IPProtocol      types.String `tfsdk:"ip_protocol"`
-	PortRangeStart  types.Int64  `tfsdk:"port_range_start"`
-	PortRangeEnd    types.Int64  `tfsdk:"port_range_end"`
-	TargetPort      types.Int64  `tfsdk:"target_port"`
-	SourceIP        types.String `tfsdk:"source_ip"`
-	TargetIP        types.String `tfsdk:"target_ip"`
-	Comment         types.String `tfsdk:"comment"`
-	Hostname        types.String `tfsdk:"hostname"`
+	ID             types.Int64  `tfsdk:"id"`
+	Enabled        types.Bool   `tfsdk:"enabled"`
+	IPProtocol     types.String `tfsdk:"ip_protocol"`
+	PortRangeStart types.Int64  `tfsdk:"port_range_start"`
+	PortRangeEnd   types.Int64  `tfsdk:"port_range_end"`
+	TargetPort     types.Int64  `tfsdk:"target_port"`
+	SourceIP       types.String `tfsdk:"source_ip"`
+	TargetIP       types.String `tfsdk:"target_ip"`
+	Comment        types.String `tfsdk:"comment"`
+	Hostname       types.String `tfsdk:"hostname"`
+	LanHost        types.Object `tfsdk:"host"`
 }
 
 func (p *portForwardingModel) toPayload() freeboxTypes.PortForwardingRulePayload {
@@ -102,6 +411,12 @@ func (p *portForwardingModel) fromClientType(rule freeboxTypes.PortForwardingRul
 	}
 
 	p.Hostname = basetypes.NewStringValue(rule.Hostname)
+
+	if rule.Host != nil {
+		p.LanHost = portForwardingLanHostModel{}.FromClientType(*rule.Host)
+	} else {
+		p.LanHost = basetypes.NewObjectNull(portForwardingLanHostModel{}.AttrTypes())
+	}
 }
 
 func (v *portForwardingResource) Metadata(ctx context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -171,6 +486,11 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 			"hostname": schema.StringAttribute{
 				MarkdownDescription: "Name of the target host in the local network",
 				Computed:            true,
+			},
+			"host": schema.SingleNestedAttribute{
+				MarkdownDescription: "LAN host information",
+				Computed:            true,
+				Attributes:          portForwardingLanHostModel{}.ResourceAttributes(),
 			},
 		},
 	}
