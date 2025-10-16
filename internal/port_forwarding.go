@@ -41,7 +41,7 @@ type portForwardingModel struct {
 	IPProtocol      types.String `tfsdk:"ip_protocol"`
 	PortRangeStart  types.Int64  `tfsdk:"port_range_start"`
 	PortRangeEnd    types.Int64  `tfsdk:"port_range_end"`
-	TargetPortStart types.Int64  `tfsdk:"target_port_start"`
+	TargetPort      types.Int64  `tfsdk:"target_port"`
 	SourceIP        types.String `tfsdk:"source_ip"`
 	TargetIP        types.String `tfsdk:"target_ip"`
 	Comment         types.String `tfsdk:"comment"`
@@ -62,10 +62,10 @@ func (p *portForwardingModel) toPayload() freeboxTypes.PortForwardingRulePayload
 		payload.WanPortEnd = p.PortRangeEnd.ValueInt64()
 	}
 
-	if p.TargetPortStart.IsNull() || p.TargetPortStart.IsUnknown() {
+	if p.TargetPort.IsNull() || p.TargetPort.IsUnknown() {
 		payload.LanPort = p.PortRangeStart.ValueInt64() // Default to the same value as the start
 	} else {
-		payload.LanPort = p.TargetPortStart.ValueInt64()
+		payload.LanPort = p.TargetPort.ValueInt64()
 	}
 
 	if !p.SourceIP.IsNull() && !p.SourceIP.IsUnknown() {
@@ -91,7 +91,7 @@ func (p *portForwardingModel) fromClientType(rule freeboxTypes.PortForwardingRul
 
 	p.PortRangeStart = basetypes.NewInt64Value(rule.WanPortStart)
 	p.PortRangeEnd = basetypes.NewInt64Value(rule.WanPortEnd)
-	p.TargetPortStart = basetypes.NewInt64Value(rule.LanPort)
+	p.TargetPort = basetypes.NewInt64Value(rule.LanPort)
 
 	if rule.Comment != "" {
 		p.Comment = basetypes.NewStringValue(rule.Comment)
@@ -146,8 +146,8 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 					int64validator.Between(32768, 65353),
 				},
 			},
-			"target_port_start": schema.Int64Attribute{
-				MarkdownDescription: "Start boundary of the target port range to forward to. If not set, it will default to the same value as `port_range_start`.",
+			"target_port": schema.Int64Attribute{
+				MarkdownDescription: "The target port range to forward to. If not set, it will default to the same value as `port_range_start`. Only available for a range of 1 port.",
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.Int64{
@@ -185,13 +185,13 @@ func (v *portForwardingResource) ValidateConfig(ctx context.Context, req resourc
 		return
 	}
 
-	if !data.TargetPortStart.IsNull() && !data.TargetPortStart.IsUnknown() {
+	if !data.TargetPort.IsNull() && !data.TargetPort.IsUnknown() {
 		end := data.PortRangeEnd.ValueInt64()
 		start := data.PortRangeStart.ValueInt64()
 		if end != 0 && end != start {
-			if data.TargetPortStart.ValueInt64() != start {
+			if data.TargetPort.ValueInt64() != start {
 				resp.Diagnostics.AddError(
-					"Invalid target port range", "The target port range is not the same as the port range start")
+					"Invalid target port", "Using a target port is only allowed when the port range is a single port")
 				return
 			}
 		}

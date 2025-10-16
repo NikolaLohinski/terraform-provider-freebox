@@ -13,7 +13,7 @@ resource "freebox_port_forwarding" "example" {
   source_ip         = "0.0.0.0"
   port_range_start  = 32443
   port_range_end    = 32443
-  target_port_start = 443
+  target_port       = 443
 }
 
 output "hostname" {
@@ -36,7 +36,7 @@ output "hostname" {
 - `comment` (String) Additional comment associated with the rule
 - `port_range_end` (Number) End boundary of the port range to forward. If not set, it will default to the same value as `port_range_start`.
 - `source_ip` (String) Local IP of the local port forwarding target. If left unset or set to 0.0.0.0, the rule will apply to any incoming IP
-- `target_port_start` (Number) Start boundary of the target port range to forward to. If not set, it will default to the same value as `port_range_start`.
+- `target_port` (Number) The target port range to forward to. If not set, it will default to the same value as `port_range_start`. Only available for a range of 1 port.
 
 ### Read-Only
 
