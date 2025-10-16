@@ -25,7 +25,7 @@ func Build() error {
 	if err := sh.RunV("go", "mod", "tidy"); err != nil {
 		return err
 	}
-	if err := sh.RunV("go", "run", "-mod=mod", "github.com/izumin5210/gex/cmd/gex", "--build"); err != nil {
+	if err := sh.RunV("go", "run", "-mod=mod", "github.com/x-izumin/gex/cmd/gex", "--build"); err != nil {
 		return err
 	}
 	here, err := os.Getwd()
