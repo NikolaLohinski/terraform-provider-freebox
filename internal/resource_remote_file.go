@@ -354,7 +354,27 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 					models.ChecksumValidator(),
 				},
 				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
+					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+						if rrifr.RequiresReplace {
+							return
+						}
+
+						var plannedChecksum basetypes.StringValue
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
+						rrifr.RequiresReplace = plannedChecksum.IsNull() || plannedChecksum.IsUnknown()
+					}, "", "Replace the remote file if the checksum not defined"),
+					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+						if rrifr.RequiresReplace {
+							return
+						}
+
+						var currentChecksum, plannedChecksum basetypes.StringValue
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
+						rrifr.Diagnostics.Append(sr.State.GetAttribute(ctx, path.Root("checksum"), &currentChecksum)...)
+						currentAlgo, currentValue := hashSpec(plannedChecksum.ValueString())
+						plannedAlgo, plannedValue := hashSpec(plannedChecksum.ValueString())
+						rrifr.RequiresReplace = currentAlgo == plannedAlgo && currentValue != plannedValue
+					}, "", "Replace the remote file if the checksum value changed"),
 				},
 			},
 			"authentication": schema.SingleNestedAttribute{
