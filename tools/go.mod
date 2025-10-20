@@ -9,6 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-docs v0.19.1
 	github.com/magefile/mage v1.15.0
 	github.com/onsi/ginkgo/v2 v2.18.0
+	github.com/x-izumin/gex v0.7.1
 )
 
 require (
@@ -39,6 +40,7 @@ require (
 	github.com/ProtonMail/go-crypto v1.1.0-alpha.2 // indirect
 	github.com/PuerkitoBio/purell v1.1.1 // indirect
 	github.com/PuerkitoBio/urlesc v0.0.0-20170810143723-de5bf2ad4578 // indirect
+	github.com/Songmu/wrapcommander v0.1.0 // indirect
 	github.com/agext/levenshtein v1.2.3 // indirect
 	github.com/aliyun/alibaba-cloud-sdk-go v1.61.1501 // indirect
 	github.com/aliyun/aliyun-oss-go-sdk v0.0.0-20190103054945-8205d1f41e70 // indirect
@@ -156,7 +158,7 @@ require (
 	github.com/huandu/xstrings v1.3.3 // indirect
 	github.com/imdario/mergo v0.3.15 // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
-	github.com/izumin5210/gex v0.6.1 // indirect
+	github.com/izumin5210/execx v0.1.0 // indirect
 	github.com/jedib0t/go-pretty v4.3.0+incompatible // indirect
 	github.com/jedib0t/go-pretty/v6 v6.4.4 // indirect
 	github.com/jmespath/go-jmespath v0.4.0 // indirect

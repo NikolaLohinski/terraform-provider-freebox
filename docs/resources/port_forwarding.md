@@ -6,19 +6,17 @@ Manages a port forwarding between a local network host and the Freebox Internet 
 
 ```terraform
 resource "freebox_port_forwarding" "example" {
-  enabled          = true
-  ip_protocol      = "udp"
-  target_ip        = "192.168.1.255"
-  comment          = "This is an example comment"
-  source_ip        = "0.0.0.0"
-  # Required to set either source_port/target_port as shown
-  # to do port mapping, or range_port_start/range_port_end
-  # to forward a full range of ports
-  source_port      = 443
-  target_port      = 8443
+  enabled           = true
+  ip_protocol       = "udp"
+  target_ip         = "192.168.1.255"
+  comment           = "This is an example comment"
+  source_ip         = "0.0.0.0"
+  port_range_start  = 32443
+  port_range_end    = 32443
+  target_port       = 443
 }
 
-output "task_id" {
+output "hostname" {
   value = resource.freebox_port_forwarding.example.hostname
 }
 ```
@@ -30,16 +28,15 @@ output "task_id" {
 
 - `enabled` (Boolean) Status of the forwarding
 - `ip_protocol` (String) Protocol to handle
+- `port_range_start` (Number) Start boundary of the port range to forward. The range is inclusive.
 - `target_ip` (String) Local IP of the local port forwarding target
 
 ### Optional
 
 - `comment` (String) Additional comment associated with the rule
-- `port_range_end` (Number) End boundary of the port range to forward. Conflicts with `source_port` and `target_port`
-- `port_range_start` (Number) Start boundary of the port range to forward. Conflicts with `source_port` and `target_port`
+- `port_range_end` (Number) End boundary of the port range to forward. If not set, it will default to the same value as `port_range_start`.
 - `source_ip` (String) Local IP of the local port forwarding target. If left unset or set to 0.0.0.0, the rule will apply to any incoming IP
-- `source_port` (Number) Single source port to forward. Conflicts with `port_range_start` and `port_range_end`
-- `target_port` (Number) Single target port to forward to. Conflicts with `port_range_start` and `port_range_end`
+- `target_port` (Number) The target port range to forward to. If not set, it will default to the same value as `port_range_start`. Only available for a range of 1 port.
 
 ### Read-Only
 

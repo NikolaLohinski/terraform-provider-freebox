@@ -15,8 +15,8 @@ output "disk_type" {
 
 output "sizes" {
   value = {
-    virtual: data.freebox_virtual_disk.example.virtual_size,
-    physical: data.freebox_virtual_disk.example.actual_size,
+    virtual : data.freebox_virtual_disk.example.virtual_size,
+    physical : data.freebox_virtual_disk.example.actual_size,
   }
 }
 ```

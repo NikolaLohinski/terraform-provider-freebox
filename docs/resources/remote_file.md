@@ -11,7 +11,7 @@ resource "freebox_remote_file" "example" {
   checksum         = "sha256:0a0a9f2a6772942557ab5347d9b0e6b8"
 }
 
-output "task_id" {
+output "filesystem_task_id" {
   value = resource.freebox_remote_file.example.task_id
 }
 ```
@@ -27,6 +27,7 @@ output "task_id" {
 
 - `authentication` (Attributes) Authentication credentials to use for the operation (see [below for nested schema](#nestedatt--authentication))
 - `checksum` (String) Checksum to verify the hash of the downloaded file
+- `extract` (Attributes) Whether to extract the file after downloading (see [below for nested schema](#nestedatt--extract))
 - `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
 - `source_content` (String) The content of the file
 - `source_remote_file` (String) The path to the file on the Freebox to copy
@@ -49,6 +50,19 @@ Optional:
 
 
 
+<a id="nestedatt--extract"></a>
+### Nested Schema for `extract`
+
+Required:
+
+- `destination_path` (String) The destination folder
+
+Optional:
+
+- `overwrite` (Boolean) Overwrite files on conflict
+- `password` (String, Sensitive) The archive password
+
+
 <a id="nestedatt--polling"></a>
 ### Nested Schema for `polling`
 
@@ -58,6 +72,7 @@ Optional:
 - `copy` (Attributes) Copy polling configuration (see [below for nested schema](#nestedatt--polling--copy))
 - `delete` (Attributes) Deletion polling configuration (see [below for nested schema](#nestedatt--polling--delete))
 - `download` (Attributes) Creation polling configuration (see [below for nested schema](#nestedatt--polling--download))
+- `extract` (Attributes) Extraction polling configuration (see [below for nested schema](#nestedatt--polling--extract))
 - `move` (Attributes) Move polling configuration (see [below for nested schema](#nestedatt--polling--move))
 - `upload` (Attributes) Upload polling configuration (see [below for nested schema](#nestedatt--polling--upload))
 
@@ -90,6 +105,15 @@ Optional:
 
 <a id="nestedatt--polling--download"></a>
 ### Nested Schema for `polling.download`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--extract"></a>
+### Nested Schema for `polling.extract`
 
 Optional:
 
