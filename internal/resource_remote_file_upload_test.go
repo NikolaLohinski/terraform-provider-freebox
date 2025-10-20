@@ -21,7 +21,7 @@ import (
 	. "github.com/onsi/gomega/gstruct"
 )
 
-var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() {
+var _ = Context(`resource "freebox_remote_file" { source_content = ... }`, func() {
 	var (
 		exampleFile  file
 		resourceName string
@@ -48,7 +48,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 						{
 							Config: providerBlock + `
 								resource "freebox_remote_file" "` + resourceName + `" {
-									source_bytes = "` + exampleFile.source_url_or_content + `"
+									source_content = "` + exampleFile.source_url_or_content + `"
 									destination_path = "` + exampleFile.filepath + `"
 
 									polling = {
@@ -68,7 +68,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 								resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
@@ -106,12 +106,12 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 						{
 							Config: providerBlock + `
 								resource "freebox_remote_file" "` + resourceName + `" {
-									source_bytes = "` + exampleFile.source_url_or_content + `"
+									source_content = "` + exampleFile.source_url_or_content + `"
 									destination_path = "` + exampleFile.filepath + `"
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 								resource.TestCheckResourceAttrWith("freebox_remote_file."+resourceName, "polling.download.interval", durationEqualFunc(3*time.Second)),
 								resource.TestCheckResourceAttrWith("freebox_remote_file."+resourceName, "polling.download.timeout", durationEqualFunc(30*time.Minute)),
@@ -157,7 +157,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 							{
 								Config: providerBlock + `
 									resource "freebox_remote_file" "` + resourceName + `" {
-										source_bytes = "` + exampleFile.source_url_or_content + `"
+										source_content = "` + exampleFile.source_url_or_content + `"
 										destination_path = "` + exampleFile.filepath + `"
 
 										polling = {
@@ -170,7 +170,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									}
 								`,
 								Check: resource.ComposeAggregateTestCheckFunc(
-									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 									resource.TestCheckResourceAttrWith("freebox_remote_file."+resourceName, "polling.download.interval", durationEqualFunc(3*time.Second)),
 									resource.TestCheckResourceAttrWith("freebox_remote_file."+resourceName, "polling.download.timeout", durationEqualFunc(30*time.Minute)),
@@ -217,7 +217,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 						{
 							Config: providerBlock + `
 								resource "freebox_remote_file" "` + resourceName + `" {
-									source_bytes = "` + exampleFile.source_url_or_content + `"
+									source_content = "` + exampleFile.source_url_or_content + `"
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
 
@@ -239,7 +239,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 							`,
 
 							Check: resource.ComposeAggregateTestCheckFunc(
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 								func(s *terraform.State) error {
@@ -276,7 +276,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 						{
 							Config: providerBlock + `
 								resource "freebox_remote_file" "` + resourceName + `" {
-									source_bytes = "` + existingDisk.source_url_or_content + `"
+									source_content = "` + existingDisk.source_url_or_content + `"
 									destination_path = "` + existingDisk.filepath + `"
 									checksum = "` + existingDisk.digest + `"
 
@@ -310,13 +310,13 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 
 		BeforeEach(func(ctx SpecContext) {
 			newFile = exampleFile
-			sourceAttribute = "source_bytes"
+			sourceAttribute = "source_content"
 		})
 
 		JustBeforeEach(func(ctx SpecContext) {
 			config = providerBlock + `
 				resource "freebox_remote_file" "` + resourceName + `" {
-					source_bytes = "` + exampleFile.source_url_or_content + `"
+					source_content = "` + exampleFile.source_url_or_content + `"
 					destination_path = "` + exampleFile.filepath + `"
 					checksum = "` + exampleFile.digest + `"
 
@@ -384,7 +384,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 											Expect(err).To(BeNil())
@@ -405,7 +405,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", newFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", newFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", newFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", newFile.source_url_or_content),
 										func(s *terraform.State) error {
 											_, err := freeboxClient.GetFileInfo(ctx, newFile.filepath)
 											Expect(err).To(BeNil(), "file %s should exist", newFile.filepath)
@@ -447,7 +447,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 											Expect(err).To(BeNil())
@@ -469,7 +469,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", newFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", newFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", newFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", newFile.source_url_or_content),
 									),
 								},
 							},
@@ -504,7 +504,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 										resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
@@ -527,7 +527,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", existingDisk.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", newFile.filepath),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_remote_file", existingDisk.filepath),
-										resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_bytes"),
+										resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_content"),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, newFile.filepath)
 											Expect(err).To(BeNil())
@@ -570,7 +570,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 											Expect(err).To(BeNil())
@@ -591,7 +591,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", newFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", newFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", newFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", newFile.source_url_or_content),
 										func(s *terraform.State) error {
 											_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 											Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should no more exist", exampleFile.filepath)
@@ -668,7 +668,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 						{
 							Config: providerBlock + `
 								resource "freebox_remote_file" "` + resourceName + `" {
-									source_bytes = "` + exampleFile.source_url_or_content + `"
+									source_content = "` + exampleFile.source_url_or_content + `"
 									destination_path = "` + exampleFile.filepath + `"
 									checksum = "` + exampleFile.digest + `"
 
@@ -695,7 +695,7 @@ var _ = Context(`resource "freebox_remote_file" { source_bytes = ... }`, func() 
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", exampleFile.source_url_or_content),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
 							),
 							Destroy: true,
 						},

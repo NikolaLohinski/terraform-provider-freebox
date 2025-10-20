@@ -50,8 +50,8 @@ type remoteFileModel struct {
 	SourceURL types.String `tfsdk:"source_url"`
 	// SourceRemoteFile is the remote file path.
 	SourceRemoteFile types.String `tfsdk:"source_remote_file"`
-	// SourceBytes is the file content in bytes.
-	SourceBytes types.String `tfsdk:"source_bytes"`
+	// SourceContent is the file content in bytes.
+	SourceContent types.String `tfsdk:"source_content"`
 
 	// Checksum is the file checksum.
 	// Verify the hash of the downloaded file.
@@ -70,7 +70,7 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 		"destination_path":   types.StringType,
 		"source_url":         types.StringType,
 		"source_remote_file": types.StringType,
-		"source_bytes":       types.StringType,
+		"source_content":       types.StringType,
 		"checksum":           types.StringType,
 		"authentication":     types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
 		"polling":            types.ObjectType{}.WithAttributeTypes(remoteFilePollingModel{}.AttrTypes()),
@@ -310,7 +310,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Optional:            true,
 				Validators: []validator.String{
 					models.DownloadURLValidator(),
-					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file"), path.MatchRoot("source_bytes")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file"), path.MatchRoot("source_content")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -325,7 +325,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            false,
 				Optional:            true,
 				Validators: []validator.String{
-					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_bytes")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_content")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -335,7 +335,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 					}, "", "Replace the remote file if the checksum not defined"),
 				},
 			},
-			"source_bytes": schema.StringAttribute{
+			"source_content": schema.StringAttribute{
 				MarkdownDescription: "The content of the file",
 				Required:            false,
 				Optional:            true,
@@ -478,7 +478,7 @@ func (v *remoteFileResource) create(ctx context.Context, state providerdata.Sett
 		return v.createFromURL(ctx, state, model)
 	case !model.SourceRemoteFile.IsNull():
 		return v.createFromRemoteFile(ctx, state, model)
-	case !model.SourceBytes.IsNull():
+	case !model.SourceContent.IsNull():
 		return v.createFromBytes(ctx, state, model)
 	default:
 		diagnostics.AddError("Invalid source", "Please provide a source URL, remote file path or content bytes")
@@ -612,7 +612,7 @@ func (v *remoteFileResource) createFromBytes(ctx context.Context, state provider
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	content := model.SourceBytes.ValueString()
+	content := model.SourceContent.ValueString()
 	destination := model.DestinationPath.ValueString()
 
 	writer, taskID, err := v.client.FileUploadStart(ctx, freeboxTypes.FileUploadStartActionInput{
@@ -792,7 +792,7 @@ func (v *remoteFileResource) Update(ctx context.Context, req resource.UpdateRequ
 		resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 	}()
 
-	recreate := !oldModel.SourceURL.Equal(newModel.SourceURL) || !oldModel.SourceBytes.Equal(newModel.SourceBytes)
+	recreate := !oldModel.SourceURL.Equal(newModel.SourceURL) || !oldModel.SourceContent.Equal(newModel.SourceContent)
 
 	if !oldModel.Checksum.IsNull() && !oldModel.Checksum.IsUnknown() &&
 		!newModel.Checksum.IsNull() && !newModel.Checksum.IsUnknown() {

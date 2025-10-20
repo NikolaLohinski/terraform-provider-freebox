@@ -560,7 +560,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 
 			Context("the source is a local file", func() {
 				BeforeEach(func(ctx SpecContext) {
-					sourceAttribute = "source_bytes"
+					sourceAttribute = "source_content"
 					newFile.source_url_or_content = "data"
 					newFile.digest = "sha256:3a6eb0790f39ac87c94f3856b2dd2c5d110e6811602261a9a923d3bb23adc8b7" // $ echo -n data | sha256sum
 				})
@@ -576,7 +576,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
-										resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_bytes"),
+										resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_content"),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
 											Expect(err).To(BeNil())
@@ -597,7 +597,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", newFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", newFile.filepath),
-										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_bytes", newFile.source_url_or_content),
+										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", newFile.source_url_or_content),
 										resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_url"),
 										func(s *terraform.State) error {
 											fileInfo, err := freeboxClient.GetFileInfo(ctx, newFile.filepath)
