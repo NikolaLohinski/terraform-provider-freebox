@@ -1005,11 +1005,11 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
 			filename := resourceName + ".raw.xz"
 			exampleFile = file{
-				filename:  filename,
-				directory: existingDisk.directory,
-				filepath:  path.Join(root, existingDisk.directory, filename),
-				digest:    "sha256:3ea89a1c8acb447ed04aa89265b46bd5a616e6ffada169f05f5a76ccc66f8b07",
-				source:    "https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.4/nocloud-arm64.raw.xz",
+				filename:              filename,
+				directory:             existingDisk.directory,
+				filepath:              path.Join(root, existingDisk.directory, filename),
+				digest:                "sha256:2d0a2d75cea581c8799f156e22ac5cb2fed2a88fb5cc0d0af26d46e556b1d85d",
+				source_url_or_content: "https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.4/nocloud-arm64.raw.xz",
 			}
 		})
 
@@ -1020,7 +1020,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 					{
 						Config: providerBlock + `
 							resource "freebox_remote_file" "` + resourceName + `" {
-								source_url = "` + exampleFile.source + `"
+								source_url = "` + exampleFile.source_url_or_content + `"
 								destination_path = "` + exampleFile.filepath + `"
 
 								extract = {
@@ -1030,7 +1030,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							}
 						`,
 						Check: resource.ComposeAggregateTestCheckFunc(
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source),
+							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
 							resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
