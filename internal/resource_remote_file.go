@@ -73,7 +73,7 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 		"destination_path":   types.StringType,
 		"source_url":         types.StringType,
 		"source_remote_file": types.StringType,
-		"source_content":       types.StringType,
+		"source_content":     types.StringType,
 		"checksum":           types.StringType,
 		"extract":            types.ObjectType{}.WithAttributeTypes(remoteFileExtractModel{}.AttrTypes()),
 		"authentication":     types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
@@ -422,7 +422,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 						var plannedChecksum basetypes.StringValue
 						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
 						rrifr.RequiresReplace = plannedChecksum.IsNull() || plannedChecksum.IsUnknown()
-					}, "", "Replace the remote file if the checksum not defined"),
+					}, "", "Replace the remote file if the checksum is not defined"),
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 						if rrifr.RequiresReplace {
 							return
@@ -431,9 +431,9 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 						var currentChecksum, plannedChecksum basetypes.StringValue
 						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
 						rrifr.Diagnostics.Append(sr.State.GetAttribute(ctx, path.Root("checksum"), &currentChecksum)...)
-						currentAlgo, currentValue := hashSpec(plannedChecksum.ValueString())
+						currentAlgo, currentValue := hashSpec(currentChecksum.ValueString())
 						plannedAlgo, plannedValue := hashSpec(plannedChecksum.ValueString())
-						rrifr.RequiresReplace = currentAlgo == plannedAlgo && currentValue != plannedValue
+						rrifr.RequiresReplace = currentAlgo != plannedAlgo || currentValue != plannedValue
 					}, "", "Replace the remote file if the checksum value changed"),
 				},
 			},

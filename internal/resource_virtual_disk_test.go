@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/nikolalohinski/free-go/client"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
@@ -13,6 +14,7 @@ import (
 	"github.com/nikolalohinski/terraform-provider-freebox/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework-timetypes/timetypes"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/plancheck"
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
@@ -485,8 +487,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					DiskType: exampleDisk.diskType,
 				})
 				Expect(err).To(BeNil())
-
-				Expect(internal.WaitForTask(ctx, freeboxClient, models.TaskTypeVirtualDisk, taskID, nil)).To(BeEmpty())
+				second := time.Second
+				minute := time.Minute
+				Expect(internal.WaitForTask(ctx, freeboxClient, models.TaskTypeVirtualDisk, taskID, &models.Polling{
+					Interval: timetypes.NewGoDurationPointerValue(&second),
+					Timeout:  timetypes.NewGoDurationPointerValue(&minute),
+				})).To(BeEmpty())
 			})
 
 			It("should import and then delete a remote file", func(ctx SpecContext) {
