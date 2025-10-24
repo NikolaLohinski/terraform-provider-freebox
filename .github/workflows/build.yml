@@ -32,6 +32,12 @@ jobs:
     name: Run tests with mage
     concurrency:
       group: freebox
+    env:
+      FREEBOX_ENDPOINT: ${{ secrets.FREEBOX_ENDPOINT }}
+      FREEBOX_VERSION: ${{ secrets.FREEBOX_VERSION }}
+      FREEBOX_APP_ID: ${{ secrets.FREEBOX_APP_ID }}
+      FREEBOX_TOKEN: ${{ secrets.FREEBOX_TOKEN }}
+      FREEBOX_ROOT: ${{ secrets.FREEBOX_ROOT }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -47,9 +53,3 @@ jobs:
         run: mage install
       - name: Run tests
         run: mage go:test
-        env:
-          FREEBOX_ENDPOINT: ${{ secrets.FREEBOX_ENDPOINT }}
-          FREEBOX_VERSION: ${{ secrets.FREEBOX_VERSION }}
-          FREEBOX_APP_ID: ${{ secrets.FREEBOX_APP_ID }}
-          FREEBOX_TOKEN: ${{ secrets.FREEBOX_TOKEN }}
-          FREEBOX_ROOT: ${{ secrets.FREEBOX_ROOT }}
