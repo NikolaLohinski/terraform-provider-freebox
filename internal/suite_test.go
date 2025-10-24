@@ -55,10 +55,10 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	if !ok {
 		appID = "terraform-provider-freebox"
 	}
+
 	token, ok = os.LookupEnv("FREEBOX_TOKEN")
-	if !ok {
-		panic("FREEBOX_TOKEN environment variable is not set")
-	}
+	Expect(ok).To(BeTrue(), "FREEBOX_TOKEN environment variable is not set")
+
 	providerBlock = heredoc.Doc(`
 		provider "freebox" {
 			app_id = "` + appID + `"
