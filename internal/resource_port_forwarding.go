@@ -104,7 +104,7 @@ func (o portForwardingLanHostL3ConnectivityModel) AttrTypes() map[string]attr.Ty
 	}
 }
 
-func (o portForwardingLanHostL3ConnectivityModel) FromClientType(connectivity freeboxTypes.L3Connectivity) basetypes.ObjectValue {
+func (o portForwardingLanHostL3ConnectivityModel) FromClientType(connectivity freeboxTypes.LanHostL3Connectivity) basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(o.AttrTypes(), map[string]attr.Value{
 		"address":   basetypes.NewStringValue(connectivity.Address),
 		"active":    basetypes.NewBoolValue(connectivity.Active),
