@@ -20,6 +20,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/terraform"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gstruct"
 )
 
 var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
@@ -42,8 +43,8 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 	BeforeEach(func(ctx SpecContext) {
 		resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
 		exampleDisk = diskSpec{
-			filepath: path.Join(root, existingDisk.directory, resourceName+".raw"),
-			diskType: freeboxTypes.RawDisk,
+			filepath: path.Join(root, existingDisk.directory, resourceName+".qcow2"),
+			diskType: freeboxTypes.QCow2Disk,
 			size:     originalvirtualSize,
 		}
 	})
@@ -64,22 +65,16 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 				Steps: []resource.TestStep{
 					{
-						Config: providerBlock + `
-							resource "freebox_virtual_disk" "` + resourceName + `" {
-								path = "` + exampleDisk.filepath + `"
-								type = "qcow2"
-								virtual_size = ` + strconv.Itoa(originalvirtualSize) + `
-							}
-						`,
+						Config: config,
 						Check: resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
-							resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", freeboxTypes.QCow2Disk),
+							resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
 							resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "virtual_size", strconv.Itoa(originalvirtualSize)),
 							func(s *terraform.State) error {
 								path := s.RootModule().Resources["freebox_virtual_disk."+resourceName].Primary.Attributes["path"]
 								diskInfo, err := freeboxClient.GetVirtualDiskInfo(ctx, path)
 								Expect(err).To(BeNil())
-								Expect(diskInfo.Type).To(Equal(freeboxTypes.QCow2Disk))
+								Expect(diskInfo.Type).To(Equal(exampleDisk.diskType))
 								Expect(diskInfo.VirtualSize).To(Equal(int64(originalvirtualSize)))
 								Expect(diskInfo.ActualSize).To(BeNumerically(">", 0))
 
@@ -102,22 +97,34 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		})
 
 		Context("when the file already exists", func() {
+			BeforeEach(func(ctx SpecContext) {
+				task, err := freeboxClient.CopyFiles(ctx, []string{existingDisk.filepath}, exampleDisk.filepath, freeboxTypes.FileCopyModeSkip)
+				Expect(err).To(BeNil())
+				Expect(task.ID).ToNot(BeZero())
+
+				DeferCleanup(func(ctx SpecContext) {
+					Expect(freeboxClient.DeleteFileSystemTask(ctx, task.ID)).To(Succeed())
+				})
+
+				Eventually(func() freeboxTypes.FileSystemTask {
+					task, err := freeboxClient.GetFileSystemTask(ctx, task.ID)
+					Expect(err).To(BeNil())
+					return task
+				}, "1m").Should(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"State": BeEquivalentTo(freeboxTypes.FileTaskStateDone),
+				}))
+			})
+
 			It("should fail", func(ctx SpecContext) {
 				errStr := (&client.APIError{
-					Code: "exists",
+					Code: string(freeboxTypes.DiskTaskErrorExists),
 				}).Error()
 
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_virtual_disk" "` + resourceName + `" {
-									path = "` + existingDisk.filepath + `"
-									type = "qcow2"
-									virtual_size = ` + strconv.Itoa(originalvirtualSize) + `
-								}
-							`,
+							Config: config,
 							// Replace spaces with \s+ to match fixed-size error messages
 							ExpectError: regexp.MustCompile(strings.ReplaceAll(regexp.QuoteMeta(errStr), " ", `\s+`)),
 						},
@@ -136,6 +143,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					}
 				`
 			})
+
 			It("should create the disk from the existing disk", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
