@@ -1,6 +1,8 @@
 # `freebox_port_forwarding` (Resource)
 
-Manages a port forwarding between a local network host and the Freebox Internet Gateway
+Manages a port forwarding between a local network host and the Freebox Internet Gateway.
+
+Note: To have access to the full port range, you need to enable the Full Stack IP (see [the Freebox documentation (in French)](https://assistance.free.fr/articles/1758)).
 
 ## Example
 
