@@ -125,6 +125,45 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 				})
 			})
 		})
+
+		Context("when the resize_from is specified", func() {
+			JustBeforeEach(func(ctx SpecContext) {
+				config = providerBlock + `
+					resource "freebox_virtual_disk" "` + resourceName + `" {
+						path = "` + exampleDisk.filepath + `"
+						virtual_size = ` + strconv.Itoa(originalvirtualSize) + `
+						resize_from = "` + existingDisk.filepath + `"
+					}
+				`
+			})
+			It("should create the disk from the existing disk", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: config,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
+								func(s *terraform.State) error {
+									path := s.RootModule().Resources["freebox_virtual_disk."+resourceName].Primary.Attributes["path"]
+									diskInfo, err := freeboxClient.GetVirtualDiskInfo(ctx, path)
+									Expect(err).To(BeNil())
+									Expect(diskInfo.Type).To(Equal(freeboxTypes.QCow2Disk))
+									Expect(diskInfo.VirtualSize).To(Equal(int64(originalvirtualSize)))
+									Expect(diskInfo.ActualSize).To(BeNumerically(">", 0))
+
+									sizeOnDisk, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_disk."+resourceName].Primary.Attributes["size_on_disk"])
+									Expect(err).To(BeNil())
+									Expect(sizeOnDisk).To(BeEquivalentTo(diskInfo.ActualSize))
+
+									return nil
+								},
+							),
+						},
+					},
+				})
+			})
+		})
 	})
 
 	Context("create, update and delete (CUD)", func() {
