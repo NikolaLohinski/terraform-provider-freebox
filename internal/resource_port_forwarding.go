@@ -450,7 +450,7 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				MarkdownDescription: "Start boundary of the port range to forward. The range is inclusive.",
 				Required:            true,
 				Validators: []validator.Int64{
-					int64validator.Between(32768, 65353),
+					int64validator.Between(1, 65353),
 				},
 			},
 			"port_range_end": schema.Int64Attribute{
@@ -458,7 +458,7 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.Int64{
-					int64validator.Between(32768, 65353),
+					int64validator.Between(1, 65353),
 				},
 			},
 			"target_port": schema.Int64Attribute{

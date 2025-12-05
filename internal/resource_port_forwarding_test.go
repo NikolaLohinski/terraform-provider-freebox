@@ -30,15 +30,15 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 									target_ip         = "192.168.1.1"
 									comment 	      = "` + name + `"
 									source_ip         = "0.0.0.0"
-									port_range_start  = 32768
+									port_range_start  = 25565
 									target_port       = 1234
 								}
 							`,
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "enabled", "true"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "ip_protocol", "tcp"),
-								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_start", "32768"),
-								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_end", "32768"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_start", "25565"),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "port_range_end", "25565"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_port", "1234"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "target_ip", "192.168.1.1"),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+name, "comment", name),
@@ -54,8 +54,8 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 									}
 
 									Expect(portForwardingRule).ToNot(BeNil())
-									Expect(portForwardingRule.WanPortStart).To(Equal(int64(32768)))
-									Expect(portForwardingRule.WanPortEnd).To(Equal(int64(32768)))
+									Expect(portForwardingRule.WanPortStart).To(Equal(int64(25565)))
+									Expect(portForwardingRule.WanPortEnd).To(Equal(int64(25565)))
 									Expect(portForwardingRule.LanPort).To(Equal(int64(1234)))
 
 									return nil
