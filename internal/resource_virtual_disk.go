@@ -468,11 +468,7 @@ func (v *virtualDiskResource) createFromScratch(ctx context.Context, model *virt
 		model.Type = basetypes.NewStringValue(freeboxTypes.QCow2Disk)
 	}
 
-	taskID, err := v.client.CreateVirtualDisk(ctx, freeboxTypes.VirtualDisksCreatePayload{
-		DiskPath: freeboxTypes.Base64Path(model.Path.ValueString()),
-		Size:     model.VirtualSize.ValueInt64(),
-		DiskType: diskType,
-	})
+	taskID, err := v.client.CreateVirtualDisk(ctx, model.toCreatePayload())
 	if err != nil {
 		diagnostics.AddError("Failed to create virtual disk", fmt.Sprintf("Path: %s, Error: %s", model.Path.ValueString(), err.Error()))
 		return
