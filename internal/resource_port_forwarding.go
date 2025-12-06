@@ -425,7 +425,7 @@ func (v *portForwardingResource) Metadata(ctx context.Context, req resource.Meta
 
 func (v *portForwardingResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a port forwarding between a local network host and the Freebox Internet Gateway",
+		MarkdownDescription: "Manages a port forwarding between a local network host and the Freebox Internet Gateway.\n\nNote: To have access to the full port range, you need to enable the Full Stack IP (see [the Freebox documentation (in French)](https://assistance.free.fr/articles/1758)).",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.Int64Attribute{
 				Computed:            true,
@@ -450,7 +450,7 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				MarkdownDescription: "Start boundary of the port range to forward. The range is inclusive.",
 				Required:            true,
 				Validators: []validator.Int64{
-					int64validator.Between(32768, 65353),
+					int64validator.Between(1, 65353),
 				},
 			},
 			"port_range_end": schema.Int64Attribute{
@@ -458,7 +458,7 @@ func (v *portForwardingResource) Schema(ctx context.Context, req resource.Schema
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.Int64{
-					int64validator.Between(32768, 65353),
+					int64validator.Between(1, 65353),
 				},
 			},
 			"target_port": schema.Int64Attribute{
