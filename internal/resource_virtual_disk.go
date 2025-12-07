@@ -2,18 +2,22 @@ package internal
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
 	"time"
 
+	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
+	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/int64planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
-	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
@@ -45,6 +49,8 @@ type virtualDiskModel struct {
 	Path types.String `tfsdk:"path"`
 	// Type is the type of virtual disk.
 	Type types.String `tfsdk:"type"`
+	// ResizeFrom is the path to the virtual disk to resize from.
+	ResizeFrom types.String `tfsdk:"resize_from"`
 	// VirtualSize is the size of virtual disk. This is the size the disk will appear inside the VM.
 	VirtualSize types.Int64 `tfsdk:"virtual_size"`
 	// SizeOnDisk is the space used by virtual image on disk. This is how much filesystem space is consumed on the box.
@@ -66,6 +72,8 @@ func (v *virtualDiskModel) populateFromFileInfo(fileInfo freeboxTypes.FileInfo) 
 }
 
 func (v *virtualDiskModel) populateDefaults() {
+	v.SizeOnDisk = basetypes.NewInt64Null()
+
 	if v.Polling.IsUnknown() || v.Polling.IsNull() {
 		v.Polling = virtualDiskPollingModel{}.defaults()
 	}
@@ -88,6 +96,10 @@ func (v *virtualDiskModel) toResizePayload() (payload freeboxTypes.VirtualDisksR
 }
 
 type virtualDiskPollingModel struct {
+	// Checksum is the polling configuration for checksum compute operation.
+	Checksum types.Object `tfsdk:"checksum"`
+	// Copy is the polling configuration for copy operation.
+	Copy types.Object `tfsdk:"copy"`
 	// Create is the polling configuration for create operation.
 	Create types.Object `tfsdk:"create"`
 	// Delete is the polling configuration for delete operation.
@@ -100,15 +112,31 @@ type virtualDiskPollingModel struct {
 
 func (v virtualDiskPollingModel) defaults() basetypes.ObjectValue {
 	return basetypes.NewObjectValueMust(virtualDiskPollingModel{}.AttrTypes(), map[string]attr.Value{
-		"create": models.NewPollingSpecModel(time.Second, time.Minute),
-		"delete": models.NewPollingSpecModel(time.Second, time.Minute),
-		"move":   models.NewPollingSpecModel(time.Second, time.Minute),
-		"resize": models.NewPollingSpecModel(time.Second, time.Minute),
+		"checksum": models.NewPollingSpecModel(time.Second, time.Minute),
+		"copy":     models.NewPollingSpecModel(2*time.Second, 2*time.Minute),
+		"create":   models.NewPollingSpecModel(time.Second, time.Minute),
+		"delete":   models.NewPollingSpecModel(time.Second, time.Minute),
+		"move":     models.NewPollingSpecModel(time.Second, time.Minute),
+		"resize":   models.NewPollingSpecModel(time.Second, time.Minute),
 	})
 }
 
 func (v virtualDiskPollingModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
+		"checksum": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Polling configuration for checksum compute operation",
+			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
+		},
+		"copy": schema.SingleNestedAttribute{
+			Optional:            true,
+			Computed:            true,
+			MarkdownDescription: "Polling configuration for copy operation",
+			Attributes:          models.PollingSpecModelResourceAttributes(time.Second, time.Minute),
+			Default:             objectdefault.StaticValue(models.NewPollingSpecModel(time.Second, time.Minute)),
+		},
 		"create": schema.SingleNestedAttribute{
 			Optional:            true,
 			Computed:            true,
@@ -142,10 +170,12 @@ func (v virtualDiskPollingModel) ResourceAttributes() map[string]schema.Attribut
 
 func (v virtualDiskPollingModel) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
-		"create": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
-		"move":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
-		"delete": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
-		"resize": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"checksum": types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"copy":     types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"create":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"move":     types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"delete":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
+		"resize":   types.ObjectType{}.WithAttributeTypes(models.Polling{}.AttrTypes()),
 	}
 }
 
@@ -167,14 +197,23 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 			"type": schema.StringAttribute{
 				Computed:            true,
 				Optional:            true,
-				Default:             stringdefault.StaticString("qcow2"),
-				MarkdownDescription: "Type of virtual disk",
+				MarkdownDescription: "Type of virtual disk. If not specified, the type will be inferred from the resize from file or be set to qcow2",
 				Validators: []validator.String{
 					models.DiskTypeValidator(),
+					stringvalidator.ConflictsWith(path.MatchRoot("resize_from")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
 					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"resize_from": schema.StringAttribute{
+				MarkdownDescription: "Path to the virtual disk to resize from",
+				Optional:            true,
+				Computed:            false,
+				Validators: []validator.String{
+					models.FilePathValidator(),
+					stringvalidator.ConflictsWith(path.MatchRoot("type")),
 				},
 			},
 			"virtual_size": schema.Int64Attribute{
@@ -183,6 +222,7 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "Size in bytes of virtual disk. This is the size the disk will appear inside the VM.",
 				Validators: []validator.Int64{
 					models.VirtualDiskSizeValidator(),
+					int64validator.AtLeast(4_096),
 				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
@@ -234,53 +274,241 @@ func (v *virtualDiskResource) Create(ctx context.Context, req resource.CreateReq
 		return
 	}
 
-	taskID, err := v.client.CreateVirtualDisk(ctx, freeboxTypes.VirtualDisksCreatePayload{
-		DiskPath: freeboxTypes.Base64Path(model.Path.ValueString()),
-		Size:     model.VirtualSize.ValueInt64(),
-		DiskType: model.Type.ValueString(),
-	})
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to create virtual disk", fmt.Sprintf("Path: %s, Error: %s", model.Path.ValueString(), err.Error()))
-		return
-	}
-
 	model.populateDefaults()
 
 	defer func() {
 		resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 	}()
 
-	if diags := providerdata.SetCurrentTask(ctx, resp.Private, models.TaskTypeVirtualDisk, taskID); diags.HasError() {
+	if diags := v.create(ctx, &model, resp.Private); diags.HasError() {
 		resp.Diagnostics.Append(diags...)
+		return
+	}
+}
+
+func (v *virtualDiskResource) create(ctx context.Context, model *virtualDiskModel, private providerdata.Setter) (diagnostics diag.Diagnostics) {
+	if !model.ResizeFrom.IsNull() {
+		if diags := v.createFromExistingDisk(ctx, model.ResizeFrom.ValueString(), model, private); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
+		}
+	} else {
+		if diags := v.createFromScratch(ctx, model, private); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
+		}
+	}
+
+	diskInfo, err := v.client.GetVirtualDiskInfo(ctx, model.Path.ValueString())
+	if err != nil {
+		diagnostics.AddError("Failed to get disk info", fmt.Sprintf("Path: %s, Error: %s", model.Path.ValueString(), err.Error()))
+		return
+	}
+
+	model.populateFromVirtualDiskInfo(diskInfo)
+
+	return
+}
+
+func (v *virtualDiskResource) createFromExistingDisk(ctx context.Context, resizeFrom string, model *virtualDiskModel, private providerdata.Setter) (diagnostics diag.Diagnostics) {
+	var polling virtualDiskPollingModel
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	// Start the hash task
+
+	hashTask, err := v.client.AddHashFileTask(ctx, freeboxTypes.HashPayload{
+		HashType: freeboxTypes.HashTypeSHA512,
+		Path:     freeboxTypes.Base64Path(resizeFrom),
+	})
+	if err != nil {
+		diagnostics.AddError("Failed to add hash file task", fmt.Sprintf("Source: %s, Error: %s", resizeFrom, err.Error()))
+		return
+	}
+
+	// Note: No need to store the task id as we need to restart the full process if the hash is not the same
+
+	tflog.Debug(ctx, "Computing checksum of the existing virtual disk", map[string]interface{}{
+		"path":      resizeFrom,
+		"task.id":   hashTask.ID,
+		"task.type": models.TaskTypeFileSystem,
+	})
+
+	// Start the copy task
+
+	copyTask, err := v.client.CopyFiles(ctx, []string{resizeFrom}, model.Path.ValueString(), freeboxTypes.FileCopyModeOverwrite)
+	if err != nil {
+		diagnostics.AddError("Failed to copy virtual disk", fmt.Sprintf("Source: %s, Destination: %s, Error: %s", resizeFrom, model.Path.ValueString(), err.Error()))
+		return
+	}
+
+	tflog.Debug(ctx, "Copying virtual disk", map[string]interface{}{
+		"source":    resizeFrom,
+		"path":      model.Path.ValueString(),
+		"task.id":   copyTask.ID,
+		"task.type": models.TaskTypeFileSystem,
+	})
+
+	if diags := providerdata.SetCurrentTask(ctx, private, models.TaskTypeFileSystem, copyTask.ID); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	var copyPolling models.Polling
+	if diags := polling.Copy.As(ctx, &copyPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForFileSystemTask(ctx, v.client, copyTask.ID, copyPolling); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if err := stopAndDeleteFileSystemTask(ctx, v.client, copyTask.ID); err != nil {
+		diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task: %d, Error: %s", copyTask.ID, err.Error()))
+		return
+	}
+
+	if diags := providerdata.UnsetCurrentTask(ctx, private); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	// Wait for the hash task to complete
+
+	var checksumPolling models.Polling
+	if diags := polling.Checksum.As(ctx, &checksumPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForFileSystemTask(ctx, v.client, hashTask.ID, checksumPolling); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	hash, err := v.client.GetHashResult(ctx, hashTask.ID)
+	if err != nil {
+		diagnostics.AddError("Failed to get hash result", fmt.Sprintf("Task: %d, Error: %s", hashTask.ID, err.Error()))
+		return
+	}
+
+	hashJson, err := json.Marshal(hash)
+	if err != nil {
+		diagnostics.AddError("Failed to marshal hash", fmt.Sprintf("Error: %s", err.Error()))
+		return
+	}
+
+	if diags := private.SetKey(ctx, "resize_from_checksum", hashJson); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if err := stopAndDeleteFileSystemTask(ctx, v.client, hashTask.ID); err != nil {
+		diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task: %d, Error: %s", hashTask.ID, err.Error()))
+		return
+	}
+
+	// Start the resize task
+
+	resizeTaskID, err := v.client.ResizeVirtualDisk(ctx, freeboxTypes.VirtualDisksResizePayload{
+		DiskPath:    freeboxTypes.Base64Path(model.Path.ValueString()),
+		NewSize:     model.VirtualSize.ValueInt64() - 4_096, // The freebox API automatically adds 4KB to the size
+		ShrinkAllow: true,
+	})
+	if err != nil {
+		diagnostics.AddError("Failed to resize virtual disk", fmt.Sprintf("Path: %s, Error: %s", resizeFrom, err.Error()))
+		return
+	}
+
+	tflog.Debug(ctx, "Resizing virtual disk", map[string]interface{}{
+		"path":     model.Path.ValueString(),
+		"new_size": model.VirtualSize.ValueInt64(),
+	})
+
+	if diags := providerdata.SetCurrentTask(ctx, private, models.TaskTypeVirtualDisk, resizeTaskID); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	var resizePolling models.Polling
+	if diags := polling.Resize.As(ctx, &resizePolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if diags := waitForDiskTask(ctx, v.client, resizeTaskID, resizePolling.Timeout); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	if err := stopAndDeleteTask(ctx, v.client, models.TaskTypeVirtualDisk, resizeTaskID); err != nil {
+		diagnostics.AddError("Failed to delete virtual disk task", fmt.Sprintf("Task: %d, Error: %s", resizeTaskID, err.Error()))
+		return
+	}
+
+	if diags := providerdata.UnsetCurrentTask(ctx, private); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	return
+}
+
+func (v *virtualDiskResource) createFromScratch(ctx context.Context, model *virtualDiskModel, private providerdata.Setter) (diagnostics diag.Diagnostics) {
+	if model.Type.IsUnknown() || model.Type.IsNull() {
+		model.Type = basetypes.NewStringValue(freeboxTypes.QCow2Disk)
+	}
+
+	taskID, err := v.client.CreateVirtualDisk(ctx, model.toCreatePayload())
+	if err != nil {
+		diagnostics.AddError("Failed to create virtual disk", fmt.Sprintf("Path: %s, Error: %s", model.Path.ValueString(), err.Error()))
+		return
+	}
+
+	if diags := providerdata.SetCurrentTask(ctx, private, models.TaskTypeVirtualDisk, taskID); diags.HasError() {
+		diagnostics.Append(diags...)
 		return
 	}
 
 	var polling virtualDiskPollingModel
 
 	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
-		resp.Diagnostics.Append(diags...)
+		diagnostics.Append(diags...)
 		return
 	}
 
 	var createPolling models.Polling
 
 	if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
-		resp.Diagnostics.Append(diags...)
+		diagnostics.Append(diags...)
 		return
 	}
 
 	if diags := waitForDiskTask(ctx, v.client, taskID, createPolling.Timeout); diags.HasError() {
-		resp.Diagnostics.Append(diags...)
+		diagnostics.Append(diags...)
 		return
 	}
 
-	diskInfo, err := v.client.GetVirtualDiskInfo(ctx, model.Path.ValueString())
-	if err != nil {
-		resp.Diagnostics.AddError("Failed to get disk info", fmt.Sprintf("Path: %s, Error: %s", model.Path.ValueString(), err.Error()))
+	if err := stopAndDeleteTask(ctx, v.client, models.TaskTypeVirtualDisk, taskID); err != nil {
+		diagnostics.AddError("Failed to delete virtual disk task", fmt.Sprintf("Task: %d, Error: %s", taskID, err.Error()))
 		return
 	}
 
-	model.populateFromVirtualDiskInfo(diskInfo)
+	if diags := providerdata.UnsetCurrentTask(ctx, private); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	return
 }
 
 func (v *virtualDiskResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -317,7 +545,7 @@ func (v *virtualDiskResource) Read(ctx context.Context, req resource.ReadRequest
 	if errors.As(err, &target) {
 		switch target.Code {
 		case freeboxTypes.DiskErrorNotFound:
-			tflog.Debug(ctx, "Virtual disk is not found, removing the resource form state", map[string]interface{}{
+			tflog.Debug(ctx, "Virtual disk is not found, removing the resource from the state", map[string]interface{}{
 				"error": err,
 			})
 
@@ -376,7 +604,7 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 				return
 			}
 
-			tflog.Info(ctx, "Waiting for the previous download task to complete", map[string]interface{}{
+			tflog.Info(ctx, "Waiting for the previous create task to complete", map[string]interface{}{
 				"task.id": task.ID.ValueInt64(),
 			})
 
@@ -403,6 +631,62 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 		resp.Diagnostics.Append(resp.State.Set(ctx, &newModel)...)
 	}()
 
+	if !recreate { // Compare the checksum of the resize from file only if we are not recreating the disk
+		if hashJson, diags := req.Private.GetKey(ctx, "resize_from_checksum"); diags.HasError() {
+			resp.Diagnostics.Append(diags...)
+			return
+		} else if hashJson != nil {
+			var resizeFromChecksum string
+			if err := json.Unmarshal(hashJson, &resizeFromChecksum); err != nil {
+				resp.Diagnostics.AddError("Failed to unmarshal resize from checksum", fmt.Sprintf("Error: %s", err.Error()))
+				return
+			}
+
+			// Compute the checksum of the new resize from file
+
+			resizeFromPath := newModel.ResizeFrom.ValueString()
+
+			hashTask, err := v.client.AddHashFileTask(ctx, freeboxTypes.HashPayload{
+				HashType: freeboxTypes.HashTypeSHA512,
+				Path:     freeboxTypes.Base64Path(resizeFromPath),
+			})
+			if err != nil {
+				resp.Diagnostics.AddError("Failed to add hash file task", fmt.Sprintf("Source: %s, Error: %s", resizeFromPath, err.Error()))
+				return
+			}
+
+			var polling virtualDiskPollingModel
+			if diags := newModel.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			var checksumPolling models.Polling
+			if diags := polling.Checksum.As(ctx, &checksumPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			if diags := waitForFileSystemTask(ctx, v.client, hashTask.ID, checksumPolling); diags.HasError() {
+				resp.Diagnostics.Append(diags...)
+				return
+			}
+
+			hash, err := v.client.GetHashResult(ctx, hashTask.ID)
+			if err != nil {
+				resp.Diagnostics.AddError("Failed to get hash result", fmt.Sprintf("Task: %d, Error: %s", hashTask.ID, err.Error()))
+				return
+			}
+
+			if err := stopAndDeleteFileSystemTask(ctx, v.client, hashTask.ID); err != nil {
+				resp.Diagnostics.AddError("Failed to stop and delete file system task", fmt.Sprintf("Task: %d, Error: %s", hashTask.ID, err.Error()))
+				return
+			}
+
+			recreate = resizeFromChecksum != hash // Recreate the disk if the checksum is different
+		}
+	}
+
 	if recreate {
 		// Delete the old disk and create a new one
 
@@ -425,36 +709,10 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 
-		taskID, err := v.client.CreateVirtualDisk(ctx, newModel.toCreatePayload())
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to add creation task", fmt.Sprintf("Path: %s, Error: %s", newModel.Path.ValueString(), err.Error()))
-			return
-		}
-
-		if diags := providerdata.SetCurrentTask(ctx, resp.Private, models.TaskTypeVirtualDisk, taskID); diags.HasError() {
+		if diags := v.create(ctx, &newModel, resp.Private); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
-
-		var createPolling models.Polling
-
-		if diags := polling.Create.As(ctx, &createPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
-		if diags := waitForDiskTask(ctx, v.client, taskID, createPolling.Timeout); diags.HasError() {
-			resp.Diagnostics.Append(diags...)
-			return
-		}
-
-		diskInfo, err := v.client.GetVirtualDiskInfo(ctx, newModel.Path.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to get disk info", fmt.Sprintf("Path: %s, Error: %s", newModel.Path.ValueString(), err.Error()))
-			return
-		}
-
-		newModel.populateFromVirtualDiskInfo(diskInfo)
 
 		// Disk fully recreated, no need to continue
 		return

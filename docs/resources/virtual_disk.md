@@ -7,12 +7,16 @@ Manages a virtual disk image within a Freebox
 ```terraform
 resource "freebox_virtual_disk" "example" {
   path         = "/Freebox/VMs/disk.qcow2"
-  type         = "qcow2"
   virtual_size = 10 * 1024 * 1024 * 1024 # 10 GB
+  resize_from  = "/Freebox/debian.qcow2"
 }
 
-output "task_id" {
+output "size_on_disk" {
   value = resource.freebox_virtual_disk.example.size_on_disk
+}
+
+output "disk_type" {
+  value = resource.freebox_virtual_disk.example.type # "qcow2"
 }
 ```
 
@@ -26,7 +30,8 @@ output "task_id" {
 ### Optional
 
 - `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
-- `type` (String) Type of virtual disk
+- `resize_from` (String) Path to the virtual disk to resize from
+- `type` (String) Type of virtual disk. If not specified, the type will be inferred from the resize from file or be set to qcow2
 - `virtual_size` (Number) Size in bytes of virtual disk. This is the size the disk will appear inside the VM.
 
 ### Read-Only
@@ -38,10 +43,30 @@ output "task_id" {
 
 Optional:
 
+- `checksum` (Attributes) Polling configuration for checksum compute operation (see [below for nested schema](#nestedatt--polling--checksum))
+- `copy` (Attributes) Polling configuration for copy operation (see [below for nested schema](#nestedatt--polling--copy))
 - `create` (Attributes) Polling configuration for create operation (see [below for nested schema](#nestedatt--polling--create))
 - `delete` (Attributes) Polling configuration for delete operation (see [below for nested schema](#nestedatt--polling--delete))
 - `move` (Attributes) Polling configuration for move operation (see [below for nested schema](#nestedatt--polling--move))
 - `resize` (Attributes) Polling configuration for resize operation (see [below for nested schema](#nestedatt--polling--resize))
+
+<a id="nestedatt--polling--checksum"></a>
+### Nested Schema for `polling.checksum`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
+
+<a id="nestedatt--polling--copy"></a>
+### Nested Schema for `polling.copy`
+
+Optional:
+
+- `interval` (String) The interval at which to poll.
+- `timeout` (String) The timeout for the operation.
+
 
 <a id="nestedatt--polling--create"></a>
 ### Nested Schema for `polling.create`
