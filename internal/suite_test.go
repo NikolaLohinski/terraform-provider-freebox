@@ -105,7 +105,7 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 			Expect(err).To(BeNil())
 			Expect(hashTask.Type).To(BeEquivalentTo(freeboxTypes.FileTaskTypeHash))
 			return hashTask
-		}, "5m").Should(MatchFields(IgnoreExtras, Fields{
+		}, "1m").Should(MatchFields(IgnoreExtras, Fields{
 			"State": Or(BeEquivalentTo(freeboxTypes.FileTaskStateDone), BeEquivalentTo(freeboxTypes.FileTaskStateFailed)),
 			"Error": Or(BeEquivalentTo(freeboxTypes.FileTaskErrorNone), BeEquivalentTo(freeboxTypes.FileTaskErrorFileNotFound)),
 		}))
@@ -196,4 +196,34 @@ var _ = BeforeEach(func(ctx SpecContext) {
 
 		Expect(newTasks).To(BeEquivalentTo(oldTasks), "File system tasks should be the same before and after test")
 	}, fsTasks)
+
+	DeferCleanup(func(ctx SpecContext) {
+		hashTask, err := freeboxClient.AddHashFileTask(ctx, freeboxTypes.HashPayload{
+			Path:     freeboxTypes.Base64Path(existingDisk.filepath),
+			HashType: freeboxTypes.HashTypeSHA256,
+		})
+		Expect(err).To(BeNil())
+
+		defer func() {
+			Expect(freeboxClient.DeleteFileSystemTask(ctx, hashTask.ID)).To(Succeed())
+		}()
+
+		Eventually(func() interface{} {
+			hashTask, err = freeboxClient.GetFileSystemTask(ctx, hashTask.ID)
+			Expect(err).To(BeNil())
+			Expect(hashTask.Type).To(BeEquivalentTo(freeboxTypes.FileTaskTypeHash))
+
+			if hashTask.State == freeboxTypes.FileTaskStateFailed {
+				StopTrying("Hash task failed")
+			}
+
+			return hashTask.State
+		}, "1m").Should(BeEquivalentTo(freeboxTypes.FileTaskStateDone))
+
+		Expect(hashTask.State).To(BeEquivalentTo(freeboxTypes.FileTaskStateDone))
+
+		result, err := freeboxClient.GetHashResult(ctx, hashTask.ID)
+		Expect(err).To(BeNil())
+		Expect(fmt.Sprintf("sha256:%s", result)).To(BeEquivalentTo(existingDisk.digest))
+	})
 })
