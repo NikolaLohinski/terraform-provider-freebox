@@ -2,6 +2,7 @@ package internal
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
@@ -9,6 +10,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/nikolalohinski/free-go/client"
+	freeboxTypes "github.com/nikolalohinski/free-go/types"
 	"github.com/nikolalohinski/terraform-provider-freebox/internal/models"
 )
 
@@ -96,6 +98,18 @@ func (a *VirtualDiskDataSource) Read(ctx context.Context, req datasource.ReadReq
 
 	diskInfo, err := a.client.GetVirtualDiskInfo(ctx, path)
 	if err != nil {
+		var target *client.APIError
+		if errors.As(err, &target) {
+			switch target.Code {
+			case freeboxTypes.DiskErrorInfo:
+				resp.Diagnostics.AddError(
+					"Failed to get virtual disk info",
+					fmt.Sprintf("Failed to get virtual disk info at %q: %s. It is probably in use.", path, target.Message),
+				)
+				return
+			}
+		}
+
 		resp.Diagnostics.AddError(
 			"Failed to get virtual disk info",
 			fmt.Sprintf("Failed to get virtual disk info at %q: %s", path, err),
