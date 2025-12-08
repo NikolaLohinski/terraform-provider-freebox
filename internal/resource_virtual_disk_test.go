@@ -61,7 +61,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		`
 	})
 
-	Context("create and delete (CD)", func() {
+	Context("create and delete", func() {
 		It("should create and delete the file with the defaults", func(ctx SpecContext) {
 			resource.UnitTest(GinkgoT(), resource.TestCase{
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -171,7 +171,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		})
 	})
 
-	Context("create, update and delete (CUD)", func() {
+	Context("create, update and delete", func() {
 		var newDisk diskSpec
 		var newConfig string
 
@@ -527,7 +527,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		})
 	})
 
-	Context("import and delete (ID)", func() {
+	Context("import and delete", func() {
 		Context("the file exists", func() {
 			BeforeEach(func(ctx SpecContext) {
 				taskID, err := freeboxClient.CreateVirtualDisk(ctx, freeboxTypes.VirtualDisksCreatePayload{
@@ -544,7 +544,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 				})).To(BeEmpty())
 			})
 
-			It("should import and then delete a remote file", func(ctx SpecContext) {
+			It("should work", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{

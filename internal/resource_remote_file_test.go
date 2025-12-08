@@ -68,7 +68,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 		`
 	})
 
-	Context("create and delete (CD)", func() {
+	Context("create and delete", func() {
 		Context("without a checksum", func() {
 			It("should download and delete the file", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
@@ -296,7 +296,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			})
 		})
 	})
-	Context("create, update and delete (CUD)", func() {
+	Context("create, update and delete", func() {
 		var newFile file
 		var newConfig string
 		var sourceAttribute string
@@ -870,118 +870,122 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			})
 		})
 	})
-	Context("import and delete (ID)", func() {
-		BeforeEach(func(ctx SpecContext) {
-			taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
-				DownloadDirectory: path.Join(root, exampleFile.directory),
-				DownloadURLs:      []string{exampleFile.source_url_or_content},
-				Filename:          exampleFile.filename,
-				Hash:              exampleFile.digest,
-			})
-			Expect(err).To(BeNil())
-			Expect(taskID).ToNot(BeZero())
-
-			DeferCleanup(func(ctx SpecContext, taskID int64) {
-				Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
-			}, taskID)
-
-			Eventually(func() types.DownloadTask {
-				downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+	Context("import and delete", func() {
+		Context("the file exists", func() {
+			BeforeEach(func(ctx SpecContext) {
+				taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
+					DownloadDirectory: path.Join(root, exampleFile.directory),
+					DownloadURLs:      []string{exampleFile.source_url_or_content},
+					Filename:          exampleFile.filename,
+					Hash:              exampleFile.digest,
+				})
 				Expect(err).To(BeNil())
-				return downloadTask
-			}, "30s").Should(MatchFields(IgnoreExtras, Fields{
-				"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
-			}))
-		})
+				Expect(taskID).ToNot(BeZero())
 
-		Describe("import and delete with path", func() {
-			It("should import and then delete a remote file", func(ctx SpecContext) {
-				resource.UnitTest(GinkgoT(), resource.TestCase{
-					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-					Steps: []resource.TestStep{
-						{
-							Config:             initialConfig,
-							ResourceName:       "freebox_remote_file." + resourceName,
-							ImportState:        true,
-							ImportStateId:      exampleFile.filepath,
-							ImportStatePersist: true,
-							Check: resource.ComposeAggregateTestCheckFunc(
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
-							),
-							Destroy: true,
+				DeferCleanup(func(ctx SpecContext, taskID int64) {
+					Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
+				}, taskID)
+
+				Eventually(func() types.DownloadTask {
+					downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+					Expect(err).To(BeNil())
+					return downloadTask
+				}, "30s").Should(MatchFields(IgnoreExtras, Fields{
+					"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
+				}))
+			})
+
+			Describe("from destination_path", func() {
+				It("should work", func(ctx SpecContext) {
+					resource.UnitTest(GinkgoT(), resource.TestCase{
+						ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+						Steps: []resource.TestStep{
+							{
+								Config:             initialConfig,
+								ResourceName:       "freebox_remote_file." + resourceName,
+								ImportState:        true,
+								ImportStateId:      exampleFile.filepath,
+								ImportStatePersist: true,
+								Check: resource.ComposeAggregateTestCheckFunc(
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
+								),
+								Destroy: true,
+							},
 						},
-					},
-					CheckDestroy: func(s *terraform.State) error {
-						_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
-						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
-						return nil
-					},
+						CheckDestroy: func(s *terraform.State) error {
+							_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+							Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+							return nil
+						},
+					})
 				})
 			})
 		})
 	})
-	Context("create and extract (CE)", func() {
+	Context("create and extract", func() {
 		var (
 			destinationPath string
 			extractedPath   string
 		)
 
-		BeforeEach(func(ctx SpecContext) {
-			filename := resourceName + ".raw.xz"
-			exampleFile = file{
-				filename:              filename,
-				directory:             existingDisk.directory,
-				filepath:              path.Join(root, existingDisk.directory, filename),
-				digest:                "sha256:19b07d31088b3beea83948506201d1648a31d859d177a8c5ebedfdfc44155a29",
-				source_url_or_content: "https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.4/nocloud-arm64.raw.xz",
-			}
-			destinationPath = path.Join(root, existingDisk.directory)
-			extractedPath = path.Join(destinationPath, strings.TrimSuffix(path.Base(exampleFile.filepath), path.Ext(exampleFile.filepath)))
-		})
+		Context("from an online xz file", func() {
+			BeforeEach(func(ctx SpecContext) {
+				filename := resourceName + ".raw.xz"
+				exampleFile = file{
+					filename:              filename,
+					directory:             existingDisk.directory,
+					filepath:              path.Join(root, existingDisk.directory, filename),
+					digest:                "sha256:19b07d31088b3beea83948506201d1648a31d859d177a8c5ebedfdfc44155a29",
+					source_url_or_content: "https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.4/nocloud-arm64.raw.xz",
+				}
+				destinationPath = path.Join(root, existingDisk.directory)
+				extractedPath = path.Join(destinationPath, strings.TrimSuffix(path.Base(exampleFile.filepath), path.Ext(exampleFile.filepath)))
+			})
 
-		JustBeforeEach(func(ctx SpecContext) {
-			initialConfig = terraformConfigWithAttribute("extract", []byte(`{
-				destination_path = "`+destinationPath+`"
-				overwrite = true
-			}`))(initialConfig)
-		})
+			JustBeforeEach(func(ctx SpecContext) {
+				initialConfig = terraformConfigWithAttribute("extract", []byte(`{
+					destination_path = "`+destinationPath+`"
+					overwrite = true
+				}`))(initialConfig)
+			})
 
-		It("should download and extract the file", func(ctx SpecContext) {
-			resource.UnitTest(GinkgoT(), resource.TestCase{
-				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-				Steps: []resource.TestStep{
-					{
-						Config: initialConfig,
-						Check: resource.ComposeAggregateTestCheckFunc(
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
-							resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
-							func(s *terraform.State) error {
-								fileInfo, err := freeboxClient.GetFileInfo(ctx, destinationPath)
-								Expect(err).To(BeNil())
-								Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeDirectory))
+			It("should download and extract the file", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config: initialConfig,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
+								resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+								func(s *terraform.State) error {
+									fileInfo, err := freeboxClient.GetFileInfo(ctx, destinationPath)
+									Expect(err).To(BeNil())
+									Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeDirectory))
 
-								_, err = freeboxClient.GetFileInfo(ctx, extractedPath)
-								Expect(err).To(BeNil())
+									_, err = freeboxClient.GetFileInfo(ctx, extractedPath)
+									Expect(err).To(BeNil())
 
-								return nil
-							},
-						),
+									return nil
+								},
+							),
+						},
 					},
-				},
-				CheckDestroy: func(s *terraform.State) error {
-					_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
-					Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+					CheckDestroy: func(s *terraform.State) error {
+						_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
 
-					// TODO: remove extract file at the end of the test
-					// _, err = freeboxClient.GetFileInfo(ctx, extractedPath)
-					// Expect(err).To(MatchError(client.ErrPathNotFound), "extracted file %a should not exist", extractedPath)
+						// TODO: remove extract file at the end of the test
+						// _, err = freeboxClient.GetFileInfo(ctx, extractedPath)
+						// Expect(err).To(MatchError(client.ErrPathNotFound), "extracted file %a should not exist", extractedPath)
 
-					return nil
-				},
+						return nil
+					},
+				})
 			})
 		})
 	})

@@ -73,7 +73,7 @@ var _ = Context(`resource "freebox_remote_file" { source_content = ... }`, func(
 		`
 	})
 
-	Context("create and delete (CD)", func() {
+	Context("create and delete", func() {
 		It("should upload, verify the checksum and delete the file", func(ctx SpecContext) {
 			resource.UnitTest(GinkgoT(), resource.TestCase{
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
@@ -250,7 +250,7 @@ var _ = Context(`resource "freebox_remote_file" { source_content = ... }`, func(
 			})
 		})
 	})
-	Context("create, update and delete (CUD)", func() {
+	Context("create, update and delete", func() {
 		var newFile file
 		var newConfig string
 		var sourceAttribute string
@@ -540,63 +540,65 @@ var _ = Context(`resource "freebox_remote_file" { source_content = ... }`, func(
 			})
 		})
 	})
-	Context("import and delete (ID)", func() {
-		BeforeEach(func(ctx SpecContext) {
-			writter, taskID, err := freeboxClient.FileUploadStart(ctx, types.FileUploadStartActionInput{
-				Size:     len(exampleFile.source_url_or_content),
-				Dirname:  freeboxTypes.Base64Path(go_path.Dir(exampleFile.filepath)),
-				Filename: go_path.Base(exampleFile.filepath),
-				Force:    freeboxTypes.FileUploadStartActionForceOverwrite,
-			})
-			Expect(err).To(BeNil())
-			Expect(writter).ToNot(BeNil())
-			Expect(taskID).ToNot(BeZero())
-
-			Expect(gbytes.TimeoutWriter(writter, 30*time.Second).Write([]byte(exampleFile.source_url_or_content))).To(Equal(len(exampleFile.source_url_or_content)))
-			Expect(gbytes.TimeoutCloser(writter, 30*time.Second).Close()).To(Succeed())
-
-			DeferCleanup(func(ctx SpecContext, taskID int64) {
-				Expect(freeboxClient.DeleteUploadTask(ctx, taskID)).To(Or(Succeed(), MatchError(client.ErrTaskNotFound)))
-			}, int64(taskID))
-
-			Eventually(func() types.UploadTask {
-				uploadTask, err := freeboxClient.GetUploadTask(ctx, int64(taskID))
-				if errors.Is(err, client.ErrTaskNotFound) { // The task is deleted by the time we get it
-					return types.UploadTask{
-						Status: types.UploadTaskStatusDone,
-					}
-				}
+	Context("import and delete", func() {
+		Context("the file exists", func() {
+			BeforeEach(func(ctx SpecContext) {
+				writter, taskID, err := freeboxClient.FileUploadStart(ctx, types.FileUploadStartActionInput{
+					Size:     len(exampleFile.source_url_or_content),
+					Dirname:  freeboxTypes.Base64Path(go_path.Dir(exampleFile.filepath)),
+					Filename: go_path.Base(exampleFile.filepath),
+					Force:    freeboxTypes.FileUploadStartActionForceOverwrite,
+				})
 				Expect(err).To(BeNil())
-				return uploadTask
-			}, "30s").Should(MatchFields(IgnoreExtras, Fields{
-				"Status": BeEquivalentTo(types.UploadTaskStatusDone),
-			}))
-		})
+				Expect(writter).ToNot(BeNil())
+				Expect(taskID).ToNot(BeZero())
 
-		Describe("import and delete with path", func() {
-			It("should import and then delete a remote file", func(ctx SpecContext) {
-				resource.UnitTest(GinkgoT(), resource.TestCase{
-					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-					Steps: []resource.TestStep{
-						{
-							Config:             initialConfig,
-							ResourceName:       "freebox_remote_file." + resourceName,
-							ImportState:        true,
-							ImportStateId:      exampleFile.filepath,
-							ImportStatePersist: true,
-							Check: resource.ComposeAggregateTestCheckFunc(
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
-								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
-							),
-							Destroy: true,
+				Expect(gbytes.TimeoutWriter(writter, 30*time.Second).Write([]byte(exampleFile.source_url_or_content))).To(Equal(len(exampleFile.source_url_or_content)))
+				Expect(gbytes.TimeoutCloser(writter, 30*time.Second).Close()).To(Succeed())
+
+				DeferCleanup(func(ctx SpecContext, taskID int64) {
+					Expect(freeboxClient.DeleteUploadTask(ctx, taskID)).To(Or(Succeed(), MatchError(client.ErrTaskNotFound)))
+				}, int64(taskID))
+
+				Eventually(func() types.UploadTask {
+					uploadTask, err := freeboxClient.GetUploadTask(ctx, int64(taskID))
+					if errors.Is(err, client.ErrTaskNotFound) { // The task is deleted by the time we get it
+						return types.UploadTask{
+							Status: types.UploadTaskStatusDone,
+						}
+					}
+					Expect(err).To(BeNil())
+					return uploadTask
+				}, "30s").Should(MatchFields(IgnoreExtras, Fields{
+					"Status": BeEquivalentTo(types.UploadTaskStatusDone),
+				}))
+			})
+
+			Describe("from destination_path", func() {
+				It("should work", func(ctx SpecContext) {
+					resource.UnitTest(GinkgoT(), resource.TestCase{
+						ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+						Steps: []resource.TestStep{
+							{
+								Config:             initialConfig,
+								ResourceName:       "freebox_remote_file." + resourceName,
+								ImportState:        true,
+								ImportStateId:      exampleFile.filepath,
+								ImportStatePersist: true,
+								Check: resource.ComposeAggregateTestCheckFunc(
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
+									resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_content", exampleFile.source_url_or_content),
+								),
+								Destroy: true,
+							},
 						},
-					},
-					CheckDestroy: func(s *terraform.State) error {
-						_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
-						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
-						return nil
-					},
+						CheckDestroy: func(s *terraform.State) error {
+							_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+							Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+							return nil
+						},
+					})
 				})
 			})
 		})

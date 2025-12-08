@@ -20,7 +20,7 @@ var _ = Describe("DataVirtualDisk", func() {
 	)
 
 	BeforeEach(func(ctx SpecContext) {
-		splitName := strings.Split(("test-CD-" + uuid.New().String())[:30], "-")
+		splitName := strings.Split(("test-" + uuid.New().String())[:30], "-")
 		resourceName = strings.Join(splitName[:len(splitName)-1], "-")
 	})
 

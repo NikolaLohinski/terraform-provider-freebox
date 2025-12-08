@@ -26,7 +26,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 	)
 
 	BeforeEach(func(ctx SpecContext) {
-		splitName := strings.Split(("test-CD-" + uuid.New().String())[:30], "-")
+		splitName := strings.Split(("test-" + uuid.New().String())[:30], "-")
 		resourceName = strings.Join(splitName[:len(splitName)-1], "-")
 
 		status = "running"
@@ -156,7 +156,7 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 			})
 		})
 	})
-	Context("create, update and delete (CUD)", func() {
+	Context("create, update and delete", func() {
 		var (
 			newConfig string
 		)
@@ -292,50 +292,52 @@ var _ = Context("resource \"freebox_virtual_machine\" { ... }", Ordered, func() 
 		})
 	})
 
-	Context("import and delete (ID)", func() {
-		var (
-			virtualMachineID = new(int64)
-		)
-		BeforeEach(func(ctx SpecContext) {
-			vm := Must(freeboxClient.CreateVirtualMachine(ctx, types.VirtualMachinePayload{
-				Name:     resourceName,
-				VCPUs:    1,
-				Memory:   2000,
-				DiskType: types.QCow2Disk,
-				DiskPath: types.Base64Path(existingDisk.filepath),
-			}))
-			*virtualMachineID = vm.ID
-		})
+	Context("import and delete", func() {
+		Context("from virtual machine ID", func() {
+			var (
+				virtualMachineID = new(int64)
+			)
+			BeforeEach(func(ctx SpecContext) {
+				vm := Must(freeboxClient.CreateVirtualMachine(ctx, types.VirtualMachinePayload{
+					Name:     resourceName,
+					VCPUs:    1,
+					Memory:   2000,
+					DiskType: types.QCow2Disk,
+					DiskPath: types.Base64Path(existingDisk.filepath),
+				}))
+				*virtualMachineID = vm.ID
+			})
 
-		It("should import and then delete a virtual machine", func(ctx SpecContext) {
-			resource.UnitTest(GinkgoT(), resource.TestCase{
-				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-				Steps: []resource.TestStep{
-					{
-						Config:             initialConfig,
-						ResourceName:       "freebox_virtual_machine." + resourceName,
-						ImportState:        true,
-						ImportStateId:      strconv.Itoa(int(*virtualMachineID)),
-						ImportStatePersist: true,
-						Check: resource.ComposeAggregateTestCheckFunc(
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "name", resourceName),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "vcpus", "1"),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "memory", "300"),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "disk_type", types.QCow2Disk),
-							resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "disk_path", existingDisk.filepath),
-						),
-						Destroy: true,
+			It("should work", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config:             initialConfig,
+							ResourceName:       "freebox_virtual_machine." + resourceName,
+							ImportState:        true,
+							ImportStateId:      strconv.Itoa(int(*virtualMachineID)),
+							ImportStatePersist: true,
+							Check: resource.ComposeAggregateTestCheckFunc(
+								resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "name", resourceName),
+								resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "vcpus", "1"),
+								resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "memory", "300"),
+								resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "disk_type", types.QCow2Disk),
+								resource.TestCheckResourceAttr("freebox_virtual_machine."+resourceName, "disk_path", existingDisk.filepath),
+							),
+							Destroy: true,
+						},
 					},
-				},
-				CheckDestroy: func(s *terraform.State) error {
-					id, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+resourceName].Primary.Attributes["id"])
-					Expect(err).To(BeNil())
+					CheckDestroy: func(s *terraform.State) error {
+						id, err := strconv.Atoi(s.RootModule().Resources["freebox_virtual_machine."+resourceName].Primary.Attributes["id"])
+						Expect(err).To(BeNil())
 
-					_, err = freeboxClient.GetVirtualMachine(ctx, int64(id))
-					Expect(err).To(MatchError(client.ErrVirtualMachineNotFound), "virtual machine %d should not exist", id)
+						_, err = freeboxClient.GetVirtualMachine(ctx, int64(id))
+						Expect(err).To(MatchError(client.ErrVirtualMachineNotFound), "virtual machine %d should not exist", id)
 
-					return nil
-				},
+						return nil
+					},
+				})
 			})
 		})
 	})

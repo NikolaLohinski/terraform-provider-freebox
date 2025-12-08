@@ -29,7 +29,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 	)
 
 	BeforeEach(func(ctx SpecContext) {
-		splitName := strings.Split(("test-CUD-" + uuid.New().String())[:30], "-")
+		splitName := strings.Split(("test-" + uuid.New().String())[:30], "-")
 		resourceName = strings.Join(splitName[:len(splitName)-1], "-")
 
 		enabled = true
@@ -59,7 +59,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 		`
 	})
 
-	Context("create and delete (CUD)", func() {
+	Context("create and delete", func() {
 		Describe("Using a range of ports", func() {
 			JustBeforeEach(func(ctx SpecContext) {
 				initialConfig = terraformConfigWithoutAttribute(`target_port`)(initialConfig)
@@ -175,8 +175,8 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 		})
 	})
 
-	Context("create, update and delete (CUD)", func() {
-		Describe("Using port_range_start only", func() {
+	Context("create, update and delete", func() {
+		Describe("Using a single port", func() {
 			var (
 				newPortRangeStart int64
 				newTargetPort     int64
@@ -191,7 +191,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 				initialConfig = terraformConfigWithoutAttribute("port_range_end")(initialConfig)
 			})
 
-			It("should create, update and delete the rule", func(ctx SpecContext) {
+			It("should update the rule", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
@@ -300,7 +300,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 				initialConfig = terraformConfigWithoutAttribute(`target_port`)(initialConfig)
 			})
 
-			It("should create, update and delete the rule", func(ctx SpecContext) {
+			It("should update the rule", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
