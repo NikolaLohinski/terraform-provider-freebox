@@ -8,6 +8,7 @@ import (
 
 	"github.com/nikolalohinski/free-go/client"
 	"github.com/nikolalohinski/free-go/types"
+	freeboxTypes "github.com/nikolalohinski/free-go/types"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
@@ -22,6 +23,8 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 	var (
 		exampleFile  file
 		resourceName string
+
+		initialConfig string
 	)
 
 	BeforeEach(func(ctx SpecContext) {
@@ -36,6 +39,35 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 		}
 	})
 
+	JustBeforeEach(func(ctx SpecContext) {
+		initialConfig = providerBlock + `
+			resource "freebox_remote_file" "` + resourceName + `" {
+				source_url = "` + exampleFile.source_url_or_content + `"
+				source_content = null
+				source_remote_file = null
+				destination_path = "` + exampleFile.filepath + `"
+				checksum = "` + exampleFile.digest + `"
+
+				polling = {
+					download = {
+						interval = "1s"
+						timeout = "1m"
+					}
+					delete = {
+						interval = "1s"
+						timeout = "1m"
+					}
+					checksum_compute = {
+						interval = "1s"
+						timeout = "1m"
+					}
+				}
+
+				extract = null
+			}
+		`
+	})
+
 	Context("create and delete (CD)", func() {
 		Context("without a checksum", func() {
 			It("should download and delete the file", func(ctx SpecContext) {
@@ -43,27 +75,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_remote_file" "` + resourceName + `" {
-									source_url = "` + exampleFile.source_url_or_content + `"
-									destination_path = "` + exampleFile.filepath + `"
-
-									polling = {
-										download = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										delete = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										checksum_compute = {
-											interval = "1s"
-											timeout = "1m"
-										}
-									}
-								}
-							`,
+							Config: initialConfig,
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
 								resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
@@ -178,35 +190,13 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			})
 		})
 
-		Context("with a checksum", func() {
+		Context("with no checksum", func() {
 			It("should download, verify the checksum and delete the file", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_remote_file" "` + resourceName + `" {
-									source_url = "` + exampleFile.source_url_or_content + `"
-									destination_path = "` + exampleFile.filepath + `"
-									checksum = "` + exampleFile.digest + `"
-
-									polling = {
-										download = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										delete = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										checksum_compute = {
-											interval = "1s"
-											timeout = "1m"
-										}
-									}
-								}
-							`,
-
+							Config: terraformConfigWithoutAttribute("checksum")(initialConfig),
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -230,35 +220,44 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 			})
 		})
 
+		Context("with an invalid checksum", func() {
+			AfterEach(func(ctx SpecContext) {
+				// cleanup the download task if it exists
+				tasks, err := freeboxClient.ListDownloadTasks(ctx)
+				Expect(err).To(BeNil())
+
+				for _, task := range tasks {
+					if task.Name == exampleFile.filename && task.Status == freeboxTypes.DownloadTaskStatusError && task.Error == freeboxTypes.DownloadTaskErrorBadHash {
+						Expect(freeboxClient.DeleteDownloadTask(ctx, task.ID)).To(Succeed())
+					}
+				}
+			})
+
+			It("should download, verify the checksum and delete the file", func(ctx SpecContext) {
+				resource.UnitTest(GinkgoT(), resource.TestCase{
+					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+					Steps: []resource.TestStep{
+						{
+							Config:      terraformConfigWithAttribute("checksum", "sha256:"+strings.Repeat("a", 64))(initialConfig),
+							ExpectError: regexp.MustCompile(regexp.QuoteMeta(string(freeboxTypes.DownloadTaskErrorBadHash))),
+						},
+					},
+					CheckDestroy: func(s *terraform.State) error {
+						_, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+						Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
+						return nil
+					},
+				})
+			})
+		})
+
 		Context("from a remote file", func() {
 			It("should copy, verify the checksum and delete the file", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_remote_file" "` + resourceName + `" {
-									source_remote_file = "` + existingDisk.filepath + `"
-									destination_path = "` + exampleFile.filepath + `"
-									checksum = "` + existingDisk.digest + `"
-
-									polling = {
-										copy = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										delete = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										checksum_compute = {
-											interval = "1s"
-											timeout = "1m"
-										}
-									}
-								}
-							`,
-
+							Config: terraformConfigWithoutAttribute("source_url")(terraformConfigWithAttribute("source_remote_file", existingDisk.filepath)(terraformConfigWithAttribute("checksum", existingDisk.digest)(initialConfig))),
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_remote_file", existingDisk.filepath),
 								resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_url"),
@@ -289,28 +288,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_remote_file" "` + resourceName + `" {
-									source_url = "` + existingDisk.source_url_or_content + `"
-									destination_path = "` + existingDisk.filepath + `"
-									checksum = "` + existingDisk.digest + `"
-
-									polling = {
-										download = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										delete = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										checksum_compute = {
-											interval = "1s"
-											timeout = "1m"
-										}
-									}
-								}
-							`,
+							Config:      terraformConfigWithAttribute("destination_path", existingDisk.filepath)(initialConfig),
 							ExpectError: regexp.MustCompile(`File already exists`),
 						},
 					},
@@ -320,7 +298,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 	})
 	Context("create, update and delete (CUD)", func() {
 		var newFile file
-		var config, newConfig string
+		var newConfig string
 		var sourceAttribute string
 
 		BeforeEach(func(ctx SpecContext) {
@@ -329,50 +307,15 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 		})
 
 		JustBeforeEach(func(ctx SpecContext) {
-			config = providerBlock + `
-				resource "freebox_remote_file" "` + resourceName + `" {
-					source_url = "` + exampleFile.source_url_or_content + `"
-					destination_path = "` + exampleFile.filepath + `"
-					checksum = "` + exampleFile.digest + `"
+			newConfig = terraformConfigWithAttribute("source_url", nil)(initialConfig)
+			newConfig = terraformConfigWithAttribute(sourceAttribute, newFile.source_url_or_content)(newConfig)
 
-					polling = {
-						download = {
-							interval = "1s"
-							timeout = "1m"
-						}
-						delete = {
-							interval = "1s"
-							timeout = "1m"
-						}
-						checksum_compute = {
-							interval = "1s"
-							timeout = "1m"
-						}
-					}
-				}
-			`
-			newConfig = providerBlock + `
-				resource "freebox_remote_file" "` + resourceName + `" {
-					` + sourceAttribute + ` = "` + newFile.source_url_or_content + `"
-					destination_path = "` + newFile.filepath + `"
-					checksum = "` + newFile.digest + `"
-
-					polling = {
-						download = {
-							interval = "1s"
-							timeout = "5m"
-						}
-						delete = {
-							interval = "1s"
-							timeout = "1m"
-						}
-						checksum_compute = {
-							interval = "1s"
-							timeout = "1m"
-						}
-					}
-				}
-			`
+			if newFile.filepath != exampleFile.filepath {
+				newConfig = terraformConfigWithAttribute("destination_path", newFile.filepath)(newConfig)
+			}
+			if newFile.digest != exampleFile.digest {
+				newConfig = terraformConfigWithAttribute("checksum", newFile.digest)(newConfig)
+			}
 		})
 
 		Context("the checksum changes", func() {
@@ -394,7 +337,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -449,7 +392,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -506,7 +449,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -572,7 +515,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -636,7 +579,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -694,7 +637,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -757,7 +700,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -812,7 +755,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -872,7 +815,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 										resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
@@ -957,28 +900,7 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_remote_file" "` + resourceName + `" {
-									source_url = "` + exampleFile.source_url_or_content + `"
-									destination_path = "` + exampleFile.filepath + `"
-									checksum = "` + exampleFile.digest + `"
-
-									polling = {
-										download = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										delete = {
-											interval = "1s"
-											timeout = "1m"
-										}
-										checksum_compute = {
-											interval = "1s"
-											timeout = "1m"
-										}
-									}
-								}
-							`,
+							Config:             initialConfig,
 							ResourceName:       "freebox_remote_file." + resourceName,
 							ImportState:        true,
 							ImportStateId:      exampleFile.filepath,
@@ -1001,16 +923,29 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 		})
 	})
 	Context("create and extract (CE)", func() {
+		var (
+			destinationPath string
+			extractedPath   string
+		)
+
 		BeforeEach(func(ctx SpecContext) {
-			resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
 			filename := resourceName + ".raw.xz"
 			exampleFile = file{
 				filename:              filename,
 				directory:             existingDisk.directory,
 				filepath:              path.Join(root, existingDisk.directory, filename),
-				digest:                "sha256:2d0a2d75cea581c8799f156e22ac5cb2fed2a88fb5cc0d0af26d46e556b1d85d",
+				digest:                "sha256:19b07d31088b3beea83948506201d1648a31d859d177a8c5ebedfdfc44155a29",
 				source_url_or_content: "https://factory.talos.dev/image/376567988ad370138ad8b2698212367b8edcb69b5fd68c80be1f2ec7d603b4ba/v1.9.4/nocloud-arm64.raw.xz",
 			}
+			destinationPath = path.Join(root, existingDisk.directory)
+			extractedPath = path.Join(destinationPath, strings.TrimSuffix(path.Base(exampleFile.filepath), path.Ext(exampleFile.filepath)))
+		})
+
+		JustBeforeEach(func(ctx SpecContext) {
+			initialConfig = terraformConfigWithAttribute("extract", []byte(`{
+				destination_path = "`+destinationPath+`"
+				overwrite = true
+			}`))(initialConfig)
 		})
 
 		It("should download and extract the file", func(ctx SpecContext) {
@@ -1018,32 +953,19 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 				Steps: []resource.TestStep{
 					{
-						Config: providerBlock + `
-							resource "freebox_remote_file" "` + resourceName + `" {
-								source_url = "` + exampleFile.source_url_or_content + `"
-								destination_path = "` + exampleFile.filepath + `"
-
-								extract = {
-									destination_path = "` + path.Dir(exampleFile.filepath) + `"
-									overwrite = true
-								}
-							}
-						`,
+						Config: initialConfig,
 						Check: resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "source_url", exampleFile.source_url_or_content),
 							resource.TestCheckNoResourceAttr("freebox_remote_file."+resourceName, "source_remote_file"),
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "destination_path", exampleFile.filepath),
 							resource.TestCheckResourceAttr("freebox_remote_file."+resourceName, "checksum", exampleFile.digest),
 							func(s *terraform.State) error {
-								fileInfo, err := freeboxClient.GetFileInfo(ctx, exampleFile.filepath)
+								fileInfo, err := freeboxClient.GetFileInfo(ctx, destinationPath)
 								Expect(err).To(BeNil())
-								Expect(fileInfo.Name).To(Equal(exampleFile.filename))
-								Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
+								Expect(fileInfo.Type).To(BeEquivalentTo(types.FileTypeDirectory))
 
-								extractedPath := strings.TrimSuffix(exampleFile.filepath, path.Ext(exampleFile.filepath))
-								extractedInfo, err := freeboxClient.GetFileInfo(ctx, extractedPath)
+								_, err = freeboxClient.GetFileInfo(ctx, extractedPath)
 								Expect(err).To(BeNil())
-								Expect(extractedInfo.Type).To(BeEquivalentTo(types.FileTypeFile))
 
 								return nil
 							},
@@ -1055,9 +977,8 @@ var _ = Context(`resource "freebox_remote_file" { ... }`, func() {
 					Expect(err).To(MatchError(client.ErrPathNotFound), "file %s should not exist", exampleFile.filepath)
 
 					// TODO: remove extract file at the end of the test
-					// extractedPath := strings.TrimSuffix(exampleFile.filepath, path.Ext(exampleFile.filepath))
 					// _, err = freeboxClient.GetFileInfo(ctx, extractedPath)
-					// Expect(err).To(MatchError(client.ErrPathNotFound), "extracted directory %s should not exist", extractedPath)
+					// Expect(err).To(MatchError(client.ErrPathNotFound), "extracted file %a should not exist", extractedPath)
 
 					return nil
 				},
