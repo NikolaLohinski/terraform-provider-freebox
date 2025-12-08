@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/nikolalohinski/free-go/client"
@@ -174,6 +175,7 @@ type file struct {
 
 var _ = BeforeEach(func(ctx SpecContext) {
 	randGenerator = rand.New(rand.NewSource(GinkgoRandomSeed()))
+	uuid.SetRand(randGenerator)
 })
 
 var _ = BeforeEach(func(ctx SpecContext) {
