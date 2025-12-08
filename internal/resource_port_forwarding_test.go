@@ -35,9 +35,9 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 		enabled = true
 		ipProtocol = "tcp"
 
-		sourceSubnet := randGenerator.Int63n(255)
-		sourceIP = fmt.Sprintf("192.168.%d.%d", sourceSubnet, randGenerator.Int63n(255)+1)
-		targetIP = fmt.Sprintf("192.168.%d.%d", sourceSubnet+1%255, randGenerator.Int63n(255)+1)
+		sourceSubnet := randGenerator.Int63n(200-2) + 2
+		sourceIP = fmt.Sprintf("1.1.1.%d", sourceSubnet)
+		targetIP = fmt.Sprintf("192.168.1.%d", (sourceSubnet%200)+1)
 		targetPort = randGenerator.Int63n(65353) + 1
 
 		portRangeStart = randGenerator.Int63n(65353) + 1
@@ -336,7 +336,7 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+resourceName, "port_range_start", strconv.FormatInt(newPortRangeStart, 10)),
 								resource.TestCheckResourceAttr("freebox_port_forwarding."+resourceName, "port_range_end", strconv.FormatInt(newPortRangeEnd, 10)),
-								resource.TestCheckResourceAttr("freebox_port_forwarding."+resourceName, "target_port", strconv.FormatInt(portRangeStart, 10)),
+								resource.TestCheckResourceAttr("freebox_port_forwarding."+resourceName, "target_port", strconv.FormatInt(newPortRangeStart, 10)),
 								resource.TestCheckResourceAttrWith("freebox_port_forwarding."+resourceName, "id", func(value string) error {
 									id, err := strconv.Atoi(value)
 									Expect(err).ToNot(HaveOccurred())

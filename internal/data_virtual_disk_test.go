@@ -51,7 +51,7 @@ var _ = Describe("DataVirtualDisk", func() {
 						Check: resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttr("data.freebox_virtual_disk."+resourceName, "path", existingDisk.filepath),
 							resource.TestCheckResourceAttr("data.freebox_virtual_disk."+resourceName, "type", diskType),
-							resource.TestCheckResourceAttr("data.freebox_virtual_disk."+resourceName, "actual_size", "72224768"),
+							resource.TestCheckResourceAttr("data.freebox_virtual_disk."+resourceName, "actual_size", "72220672"),
 							resource.TestCheckResourceAttr("data.freebox_virtual_disk."+resourceName, "virtual_size", "72800256"),
 						),
 					},
