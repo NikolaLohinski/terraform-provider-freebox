@@ -18,9 +18,10 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-testing v1.7.0
 	github.com/magefile/mage v1.15.0
-	github.com/nikolalohinski/free-go v1.9.0
+	github.com/nikolalohinski/free-go v1.9.1-0.20251208200606-805682ae1bd5
 	github.com/onsi/ginkgo/v2 v2.18.0
 	github.com/onsi/gomega v1.33.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -93,5 +94,4 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.34.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
