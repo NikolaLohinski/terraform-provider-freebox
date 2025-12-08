@@ -554,7 +554,7 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 			tflog.Debug(ctx, fmt.Sprintf("Extracting the file to %s", dst))
 
 			task, err := v.client.ExtractFile(ctx, freeboxTypes.ExtractFilePayload{
-				Src:       freeboxTypes.Base64Path(model.DestinationPath.ValueString()),
+				Src:       freeboxTypes.Base64Path(src),
 				Dst:       freeboxTypes.Base64Path(dst),
 				Password:  extract.Password.ValueString(),
 				Overwrite: extract.Overwrite.ValueBool(),
