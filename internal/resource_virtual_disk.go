@@ -8,7 +8,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/hashicorp/terraform-plugin-framework-validators/int64validator"
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
 	"github.com/hashicorp/terraform-plugin-framework/attr"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -89,8 +88,8 @@ func (v *virtualDiskModel) toCreatePayload() (payload freeboxTypes.VirtualDisksC
 
 func (v *virtualDiskModel) toResizePayload() (payload freeboxTypes.VirtualDisksResizePayload) {
 	payload.DiskPath = freeboxTypes.Base64Path(v.Path.ValueString())
-	payload.NewSize = v.VirtualSize.ValueInt64()
-	payload.ShrinkAllow = true // Shrink is always allowed
+	payload.NewSize = v.VirtualSize.ValueInt64() - 1_024 // The freebox API automatically adds 1KB to the size
+	payload.ShrinkAllow = true                           // Shrink is always allowed
 
 	return
 }
@@ -222,7 +221,6 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "Size in bytes of virtual disk. This is the size the disk will appear inside the VM.",
 				Validators: []validator.Int64{
 					models.VirtualDiskSizeValidator(),
-					int64validator.AtLeast(4_096),
 				},
 				PlanModifiers: []planmodifier.Int64{
 					int64planmodifier.UseStateForUnknown(),
@@ -233,9 +231,6 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "Space in bytes used by virtual image on the hard drive. This is how much filesystem space is consumed on the box.",
 				Validators: []validator.Int64{
 					models.DiskSizeValidator(),
-				},
-				PlanModifiers: []planmodifier.Int64{
-					int64planmodifier.UseStateForUnknown(),
 				},
 			},
 			"polling": schema.SingleNestedAttribute{
@@ -414,11 +409,7 @@ func (v *virtualDiskResource) createFromExistingDisk(ctx context.Context, resize
 
 	// Start the resize task
 
-	resizeTaskID, err := v.client.ResizeVirtualDisk(ctx, freeboxTypes.VirtualDisksResizePayload{
-		DiskPath:    freeboxTypes.Base64Path(model.Path.ValueString()),
-		NewSize:     model.VirtualSize.ValueInt64() - 4_096, // The freebox API automatically adds 4KB to the size
-		ShrinkAllow: true,
-	})
+	resizeTaskID, err := v.client.ResizeVirtualDisk(ctx, model.toResizePayload())
 	if err != nil {
 		diagnostics.AddError("Failed to resize virtual disk", fmt.Sprintf("Path: %s, Error: %s", resizeFrom, err.Error()))
 		return
@@ -808,16 +799,16 @@ func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateReq
 			return
 		}
 
-		// Disk resized, update the model
-
-		diskInfo, err := v.client.GetVirtualDiskInfo(ctx, newModel.Path.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Failed to get disk info", fmt.Sprintf("Path: %s, Error: %s", newModel.Path.ValueString(), err.Error()))
-			return
-		}
-
-		newModel.populateFromVirtualDiskInfo(diskInfo)
+		// Do not return here, continue with getting the disk info
 	}
+
+	diskInfo, err := v.client.GetVirtualDiskInfo(ctx, newModel.Path.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to get disk info", fmt.Sprintf("Path: %s, Error: %s", newModel.Path.ValueString(), err.Error()))
+		return
+	}
+
+	newModel.populateFromVirtualDiskInfo(diskInfo)
 }
 
 func (v *virtualDiskResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
