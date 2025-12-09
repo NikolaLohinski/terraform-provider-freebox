@@ -37,12 +37,10 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		originalvirtualSize int
 	)
 
-	const virtualSizeMultiplier = 8_192
-
 	BeforeEach(func(ctx SpecContext) {
 		resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
 
-		originalvirtualSize = (randGenerator.Intn(2048_000) + 1_024) * virtualSizeMultiplier // 8MB to 24MB
+		originalvirtualSize = roundVirtualSize(randGenerator.Intn(2_000_000) + 1_000_000) // 1MB to 3MB
 		exampleDisk = diskSpec{
 			filepath: path.Join(root, existingDisk.directory, resourceName+".qcow2"),
 			diskType: freeboxTypes.QCow2Disk,
@@ -202,7 +200,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 
 			Context("the size changes", func() {
 				BeforeEach(func(ctx SpecContext) {
-					newDisk.size += (randGenerator.Intn(2048_000) + 1_024) * 8_192 // +8MB to 16MB
+					newDisk.size = roundVirtualSize(newDisk.size + randGenerator.Intn(1_000_000) + 1_000_000) // +1MB to 2MB
 				})
 				Context("when the path changes", func() {
 					BeforeEach(func(ctx SpecContext) {
@@ -594,4 +592,12 @@ func checkDiskStateFunc(ctx context.Context, resourceName, path string) func(s *
 
 		return nil
 	}
+}
+
+func roundVirtualSize(size int) int {
+	mod := size % 8_192
+	if mod == 0 {
+		return size
+	}
+	return size + 8_192 - mod
 }
