@@ -20,6 +20,9 @@ func DiskSizeValidator() validator.Int64 {
 	return int64validator.AtLeast(0)
 }
 
+// VirtualDiskSizeValidator returns a validator that checks if the virtual disk size is valid:
+// - Greater than 0
+// - A multiple of 8192: See https://dev.freebox.fr/bugs/task/40709 for more details
 func VirtualDiskSizeValidator() validator.Int64 {
 	return &virtualDiskSizeValidator{}
 }
@@ -36,11 +39,11 @@ func (v virtualDiskSizeValidator) ValidateInt64(ctx context.Context, req validat
 }
 
 func (v virtualDiskSizeValidator) Description(ctx context.Context) string {
-	return "Virtual disk size must be greater than 0 and a multiple of 1024"
+	return "Virtual disk size must be greater than 0 and a multiple of 8192"
 }
 
 func (v virtualDiskSizeValidator) MarkdownDescription(ctx context.Context) string {
-	return "Virtual disk size must be greater than 0 and a multiple of 1024"
+	return "Virtual disk size must be greater than 0 and a multiple of 8192"
 }
 
 var _ validator.Int64 = (*virtualDiskSizeValidator)(nil)
