@@ -1,14 +1,16 @@
 package internal_test
 
 import (
+	"fmt"
+	"math/rand"
 	"os"
 	"testing"
 
 	"github.com/MakeNowJust/heredoc"
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/providerserver"
 	"github.com/hashicorp/terraform-plugin-go/tfprotov6"
 	"github.com/nikolalohinski/free-go/client"
-	"github.com/nikolalohinski/free-go/types"
 	freeboxTypes "github.com/nikolalohinski/free-go/types"
 	"github.com/nikolalohinski/terraform-provider-freebox/internal"
 	. "github.com/onsi/ginkgo/v2"
@@ -35,6 +37,8 @@ var (
 	freeboxClient client.Client
 
 	existingDisk file
+
+	randGenerator *rand.Rand
 )
 
 var _ = BeforeSuite(func(ctx SpecContext) {
@@ -90,32 +94,61 @@ var _ = BeforeSuite(func(ctx SpecContext) {
 	_, err = freeboxClient.CreateDirectory(ctx, root, existingDisk.directory)
 	Expect(err).To(Or(BeNil(), Equal(client.ErrDestinationConflict)))
 
-	if _, err := freeboxClient.GetFileInfo(ctx, existingDisk.filepath); err != nil {
-		Expect(err).To(Equal(client.ErrPathNotFound))
-		// Download disk
-		taskID, err := freeboxClient.AddDownloadTask(ctx, types.DownloadRequest{
-			DownloadURLs:      []string{existingDisk.source_url_or_content},
-			Hash:              existingDisk.digest,
-			DownloadDirectory: root + "/" + existingDisk.directory,
-			Filename:          existingDisk.filename,
+	By("Checking the existingDisk", func() {
+		hashTask, err := freeboxClient.AddHashFileTask(ctx, freeboxTypes.HashPayload{
+			Path:     freeboxTypes.Base64Path(existingDisk.filepath),
+			HashType: freeboxTypes.HashTypeSHA256,
 		})
 		Expect(err).To(BeNil())
 
-		// Cleanup download task
-		DeferCleanup(func(ctx SpecContext) {
-			Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
-		})
-
-		// Wait for download task to be done
-		Eventually(func() types.DownloadTask {
-			downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+		Eventually(func() freeboxTypes.FileSystemTask {
+			hashTask, err = freeboxClient.GetFileSystemTask(ctx, hashTask.ID)
 			Expect(err).To(BeNil())
-			return downloadTask
-		}, "5m").Should(MatchFields(IgnoreExtras, Fields{
-			"Status": BeEquivalentTo(types.DownloadTaskStatusDone),
-			"Error":  BeEquivalentTo(freeboxTypes.DownloadTaskErrorNone),
+			Expect(hashTask.Type).To(BeEquivalentTo(freeboxTypes.FileTaskTypeHash))
+			return hashTask
+		}, "1m").Should(MatchFields(IgnoreExtras, Fields{
+			"State": Or(BeEquivalentTo(freeboxTypes.FileTaskStateDone), BeEquivalentTo(freeboxTypes.FileTaskStateFailed)),
+			"Error": Or(BeEquivalentTo(freeboxTypes.FileTaskErrorNone), BeEquivalentTo(freeboxTypes.FileTaskErrorFileNotFound)),
 		}))
-	}
+
+		switch hashTask.State {
+		case freeboxTypes.FileTaskStateFailed:
+			Expect(hashTask.Error).To(BeEquivalentTo(freeboxTypes.FileTaskErrorFileNotFound))
+
+			// Download disk
+			taskID, err := freeboxClient.AddDownloadTask(ctx, freeboxTypes.DownloadRequest{
+				DownloadURLs:      []string{existingDisk.source_url_or_content},
+				Hash:              existingDisk.digest,
+				DownloadDirectory: root + "/" + existingDisk.directory,
+				Filename:          existingDisk.filename,
+			})
+			Expect(err).To(BeNil())
+
+			// Cleanup download task
+			DeferCleanup(func(ctx SpecContext) {
+				Expect(freeboxClient.DeleteDownloadTask(ctx, taskID)).To(Succeed())
+			})
+
+			// Wait for download task to be done
+			Eventually(func() freeboxTypes.DownloadTask {
+				downloadTask, err := freeboxClient.GetDownloadTask(ctx, taskID)
+				Expect(err).To(BeNil())
+				return downloadTask
+			}, "5m").Should(MatchFields(IgnoreExtras, Fields{
+				"Status": BeEquivalentTo(freeboxTypes.DownloadTaskStatusDone),
+				"Error":  BeEquivalentTo(freeboxTypes.DownloadTaskErrorNone),
+			}))
+		case freeboxTypes.FileTaskStateDone:
+			result, err := freeboxClient.GetHashResult(ctx, hashTask.ID)
+			Expect(err).To(BeNil())
+
+			if fmt.Sprintf("sha256:%s", result) != existingDisk.digest {
+				Fail(fmt.Sprintf("Hash result does not match expected digest. Please delete the file %s and run the test again: %s != %s", existingDisk.filepath, fmt.Sprintf("sha256:%s", result), existingDisk.digest))
+			}
+		default:
+			Fail(fmt.Sprintf("Hash task state is not done or failed: %s", hashTask.State))
+		}
+	})
 })
 
 var _ = AfterEach(func(ctx SpecContext) {
@@ -141,10 +174,15 @@ type file struct {
 }
 
 var _ = BeforeEach(func(ctx SpecContext) {
+	randGenerator = rand.New(rand.NewSource(GinkgoRandomSeed()))
+	uuid.SetRand(randGenerator)
+})
+
+var _ = BeforeEach(func(ctx SpecContext) {
 	dlTasks, err := freeboxClient.ListDownloadTasks(ctx)
 	Expect(err).To(BeNil())
 
-	DeferCleanup(func(ctx SpecContext, oldTasks []types.DownloadTask) {
+	DeferCleanup(func(ctx SpecContext, oldTasks []freeboxTypes.DownloadTask) {
 		newTasks, err := freeboxClient.ListDownloadTasks(ctx)
 		Expect(err).To(BeNil())
 
@@ -154,10 +192,40 @@ var _ = BeforeEach(func(ctx SpecContext) {
 	fsTasks, err := freeboxClient.ListFileSystemTasks(ctx)
 	Expect(err).To(BeNil())
 
-	DeferCleanup(func(ctx SpecContext, oldTasks []types.FileSystemTask) {
+	DeferCleanup(func(ctx SpecContext, oldTasks []freeboxTypes.FileSystemTask) {
 		newTasks, err := freeboxClient.ListFileSystemTasks(ctx)
 		Expect(err).To(BeNil())
 
 		Expect(newTasks).To(BeEquivalentTo(oldTasks), "File system tasks should be the same before and after test")
 	}, fsTasks)
+
+	DeferCleanup(func(ctx SpecContext) {
+		hashTask, err := freeboxClient.AddHashFileTask(ctx, freeboxTypes.HashPayload{
+			Path:     freeboxTypes.Base64Path(existingDisk.filepath),
+			HashType: freeboxTypes.HashTypeSHA256,
+		})
+		Expect(err).To(BeNil())
+
+		defer func() {
+			Expect(freeboxClient.DeleteFileSystemTask(ctx, hashTask.ID)).To(Succeed())
+		}()
+
+		Eventually(func() interface{} {
+			hashTask, err = freeboxClient.GetFileSystemTask(ctx, hashTask.ID)
+			Expect(err).To(BeNil())
+			Expect(hashTask.Type).To(BeEquivalentTo(freeboxTypes.FileTaskTypeHash))
+
+			if hashTask.State == freeboxTypes.FileTaskStateFailed {
+				StopTrying("Hash task failed")
+			}
+
+			return hashTask.State
+		}, "1m").Should(BeEquivalentTo(freeboxTypes.FileTaskStateDone))
+
+		Expect(hashTask.State).To(BeEquivalentTo(freeboxTypes.FileTaskStateDone))
+
+		result, err := freeboxClient.GetHashResult(ctx, hashTask.ID)
+		Expect(err).To(BeNil())
+		Expect(fmt.Sprintf("sha256:%s", result)).To(BeEquivalentTo(existingDisk.digest))
+	})
 })

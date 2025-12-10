@@ -31,17 +31,16 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 	}
 
 	var (
-		exampleDisk  diskSpec
-		resourceName string
-		config       string
-	)
-
-	const (
-		originalvirtualSize = 2048_000_000 // 2MB
+		exampleDisk         diskSpec
+		resourceName        string
+		initialConfig       string
+		originalvirtualSize int
 	)
 
 	BeforeEach(func(ctx SpecContext) {
 		resourceName = "test-" + uuid.NewString() // prefix with test- so the name start with a letter
+
+		originalvirtualSize = roundVirtualSize(randGenerator.Intn(2_000_000) + 1_000_000) // 1MB to 3MB
 		exampleDisk = diskSpec{
 			filepath: path.Join(root, existingDisk.directory, resourceName+".qcow2"),
 			diskType: freeboxTypes.QCow2Disk,
@@ -50,22 +49,23 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 	})
 
 	JustBeforeEach(func(ctx SpecContext) {
-		config = providerBlock + `
+		initialConfig = providerBlock + `
 			resource "freebox_virtual_disk" "` + resourceName + `" {
 				path = "` + exampleDisk.filepath + `"
 				type = "` + exampleDisk.diskType + `"
 				virtual_size = ` + strconv.Itoa(originalvirtualSize) + `
+				resize_from = null
 			}
 		`
 	})
 
-	Context("create and delete (CD)", func() {
+	Context("create and delete", func() {
 		It("should create and delete the file with the defaults", func(ctx SpecContext) {
 			resource.UnitTest(GinkgoT(), resource.TestCase{
 				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 				Steps: []resource.TestStep{
 					{
-						Config: config,
+						Config: initialConfig,
 						Check: resource.ComposeAggregateTestCheckFunc(
 							resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 							resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -124,7 +124,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: config,
+							Config: initialConfig,
 							// Replace spaces with \s+ to match fixed-size error messages
 							ExpectError: regexp.MustCompile(strings.ReplaceAll(regexp.QuoteMeta(errStr), " ", `\s+`)),
 						},
@@ -135,13 +135,8 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 
 		Context("when the resize_from is specified", func() {
 			JustBeforeEach(func(ctx SpecContext) {
-				config = providerBlock + `
-					resource "freebox_virtual_disk" "` + resourceName + `" {
-						path = "` + exampleDisk.filepath + `"
-						virtual_size = ` + strconv.Itoa(originalvirtualSize) + `
-						resize_from = "` + existingDisk.filepath + `"
-					}
-				`
+				initialConfig = terraformConfigWithAttribute("resize_from", existingDisk.filepath)(initialConfig)
+				initialConfig = terraformConfigWithoutAttribute("type")(initialConfig)
 			})
 
 			It("should create the disk from the existing disk", func(ctx SpecContext) {
@@ -149,7 +144,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: config,
+							Config: initialConfig,
 							Check: resource.ComposeAggregateTestCheckFunc(
 								resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 								func(s *terraform.State) error {
@@ -174,7 +169,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		})
 	})
 
-	Context("create, update and delete (CUD)", func() {
+	Context("create, update and delete", func() {
 		var newDisk diskSpec
 		var newConfig string
 
@@ -183,36 +178,40 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		})
 
 		JustBeforeEach(func(ctx SpecContext) {
-			newConfig = providerBlock + `
-				resource "freebox_virtual_disk" "` + resourceName + `" {
-					path = "` + newDisk.filepath + `"
-					type = "` + newDisk.diskType + `"
-					virtual_size = ` + strconv.Itoa(newDisk.size) + `
-				}
-			`
+			newConfig = initialConfig
+
+			if newDisk.filepath != exampleDisk.filepath {
+				newConfig = terraformConfigWithAttribute("path", newDisk.filepath)(newConfig)
+			}
+			if newDisk.diskType != exampleDisk.diskType {
+				newConfig = terraformConfigWithAttribute("type", newDisk.diskType)(newConfig)
+			}
+			if newDisk.size != exampleDisk.size {
+				newConfig = terraformConfigWithAttribute("virtual_size", strconv.Itoa(newDisk.size))(newConfig)
+			}
 		})
 
 		Context("the type changes", func() {
 			BeforeEach(func(ctx SpecContext) {
-				newDisk.diskType = freeboxTypes.QCow2Disk
+				newDisk.diskType = freeboxTypes.RawDisk
 
 				Expect(newDisk.diskType).ToNot(Equal(exampleDisk.diskType))
 			})
 
 			Context("the size changes", func() {
 				BeforeEach(func(ctx SpecContext) {
-					newDisk.size += 1024_000_000 // +1MB
+					newDisk.size = roundVirtualSize(newDisk.size + randGenerator.Intn(1_000_000) + 1_000_000) // +1MB to 2MB
 				})
 				Context("when the path changes", func() {
 					BeforeEach(func(ctx SpecContext) {
 						newDisk.filepath = exampleDisk.filepath + ".new"
 					})
-					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+					It("recreates the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -248,12 +247,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					})
 				})
 				Context("the path remains unchanged", func() {
-					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+					It("recreates the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -296,12 +295,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					BeforeEach(func(ctx SpecContext) {
 						newDisk.filepath = exampleDisk.filepath + ".new"
 					})
-					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+					It("recreates the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -337,12 +336,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					})
 				})
 				Context("the path remains unchanged", func() {
-					It("should creates, recreates and deletes a file", func(ctx SpecContext) {
+					It("recreates the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -389,12 +388,13 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					BeforeEach(func(ctx SpecContext) {
 						newDisk.filepath = exampleDisk.filepath + ".new"
 					})
-					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+
+					It("move and resize the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -430,12 +430,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					})
 				})
 				Context("the path remains unchanged", func() {
-					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+					It("resize the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -478,12 +478,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 					BeforeEach(func(ctx SpecContext) {
 						newDisk.filepath = exampleDisk.filepath + ".new"
 					})
-					It("creates, recreates and deletes a file", func(ctx SpecContext) {
+					It("move the disk", func(ctx SpecContext) {
 						resource.UnitTest(GinkgoT(), resource.TestCase{
 							ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 							Steps: []resource.TestStep{
 								{
-									Config: config,
+									Config: initialConfig,
 									Check: resource.ComposeAggregateTestCheckFunc(
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "path", exampleDisk.filepath),
 										resource.TestCheckResourceAttr("freebox_virtual_disk."+resourceName, "type", exampleDisk.diskType),
@@ -525,7 +525,7 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 		})
 	})
 
-	Context("import and delete (ID)", func() {
+	Context("import and delete", func() {
 		Context("the file exists", func() {
 			BeforeEach(func(ctx SpecContext) {
 				taskID, err := freeboxClient.CreateVirtualDisk(ctx, freeboxTypes.VirtualDisksCreatePayload{
@@ -542,16 +542,12 @@ var _ = Context(`resource "freebox_virtual_disk" { ... }`, func() {
 				})).To(BeEmpty())
 			})
 
-			It("should import and then delete a remote file", func(ctx SpecContext) {
+			It("should work", func(ctx SpecContext) {
 				resource.UnitTest(GinkgoT(), resource.TestCase{
 					ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 					Steps: []resource.TestStep{
 						{
-							Config: providerBlock + `
-								resource "freebox_virtual_disk" "` + resourceName + `" {
-									path = "` + exampleDisk.filepath + `"
-								}
-							`,
+							Config:             initialConfig,
 							ResourceName:       "freebox_virtual_disk." + resourceName,
 							ImportState:        true,
 							ImportStateId:      exampleDisk.filepath,
@@ -596,4 +592,12 @@ func checkDiskStateFunc(ctx context.Context, resourceName, path string) func(s *
 
 		return nil
 	}
+}
+
+func roundVirtualSize(size int) int {
+	mod := size % 8_192
+	if mod == 0 {
+		return size
+	}
+	return size + 8_192 - mod
 }

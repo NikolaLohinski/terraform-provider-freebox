@@ -51,6 +51,7 @@ var _ = Context("provider freebox", func() {
 			os.Setenv("FREEBOX_APP_ID", "test")
 			os.Setenv("FREEBOX_TOKEN", "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
 			apiVersionHandler := ghttp.CombineHandlers(
+				ghttp.VerifyHost(*endpoint),
 				ghttp.VerifyRequest(http.MethodGet, "/api/v0/api_version"),
 				ghttp.RespondWith(http.StatusOK, `{
 					"box_model_name": "Freebox v7 (r1)",
@@ -105,6 +106,7 @@ var _ = Context("provider freebox", func() {
 			os.Unsetenv("FREEBOX_APP_ID")
 			os.Unsetenv("FREEBOX_TOKEN")
 			apiVersionHandler := ghttp.CombineHandlers(
+				ghttp.VerifyHost(*endpoint),
 				ghttp.VerifyRequest(http.MethodGet, "/api/v42/api_version"),
 				ghttp.RespondWith(http.StatusOK, `{
 					"box_model_name": "Freebox v7 (r1)",
