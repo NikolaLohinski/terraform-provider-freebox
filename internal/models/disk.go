@@ -27,14 +27,14 @@ func VirtualDiskSizeValidator() validator.Int64 {
 	return &virtualDiskSizeValidator{}
 }
 
-type virtualDiskSizeValidator struct {}
+type virtualDiskSizeValidator struct{}
 
 func (v virtualDiskSizeValidator) ValidateInt64(ctx context.Context, req validator.Int64Request, resp *validator.Int64Response) {
 	int64validator.AtLeast(1).ValidateInt64(ctx, req, resp)
 
 	value := req.ConfigValue.ValueInt64()
-	if value % 8_192 != 0 {
-		resp.Diagnostics.AddError("Invalid virtual disk size", "Virtual disk size must be a multiple of 8_192")
+	if value%8_192 != 0 {
+		resp.Diagnostics.AddError("Invalid virtual disk size", "Virtual disk size must be a multiple of 8KiB")
 	}
 }
 
