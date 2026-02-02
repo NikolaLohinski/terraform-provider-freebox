@@ -24,6 +24,12 @@ func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator
 	if req.ConfigValue.IsNull() {
 		return
 	}
+	if req.ConfigValue.IsUnknown() {
+		return
+	}
+	if req.ConfigValue.ValueString() == "" {
+		return
+	}
 
 	u, err := url.Parse(req.ConfigValue.ValueString())
 	if err != nil {
