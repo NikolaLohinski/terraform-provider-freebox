@@ -124,6 +124,8 @@ func (p *freeboxProvider) Resources(ctx context.Context) []func() resource.Resou
 		NewVirtualDiskResource,
 		NewVirtualMachineResource,
 		NewPortForwardingResource,
+		NewVPNServerResource,
+		NewVPNUserResource,
 	}
 }
 

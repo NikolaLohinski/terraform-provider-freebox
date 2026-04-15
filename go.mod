@@ -20,7 +20,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-testing v1.7.0
 	github.com/magefile/mage v1.15.0
-	github.com/nikolalohinski/free-go v1.10.0
+	github.com/nikolalohinski/free-go v1.10.1-0.20260415194851-5bbc91265726
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	gopkg.in/yaml.v3 v3.0.1

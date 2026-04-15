@@ -171,8 +171,8 @@ github.com/muesli/cancelreader v0.2.2 h1:3I4Kt4BQjOR54NavqnDogx/MIoWBFa0StPA8ELU
 github.com/muesli/cancelreader v0.2.2/go.mod h1:3XuTXfFS2VjM+HTLZY9Ak0l6eUKfijIfMUZ4EgX0QYo=
 github.com/muesli/termenv v0.15.2 h1:GohcuySI0QmI3wN8Ok9PtKGkgkFIk7y6Vpb5PvrY+Wo=
 github.com/muesli/termenv v0.15.2/go.mod h1:Epx+iuz8sNs7mNKhxzH4fWXGNpZwUaJKRS1noLXviQ8=
-github.com/nikolalohinski/free-go v1.10.0 h1:09aJxIXXeQwEBaaTGkRUW+tWa4hUaQgfkP94dLeEoS0=
-github.com/nikolalohinski/free-go v1.10.0/go.mod h1:BQSeyvNOQNopE6GQllko4owZAO8wGNDYO1ZwYYd6wXI=
+github.com/nikolalohinski/free-go v1.10.1-0.20260415194851-5bbc91265726 h1:Ppw5UQC5VsIIVlfr7NhLoSRcGn6uxEAYxE2mIOxrvAI=
+github.com/nikolalohinski/free-go v1.10.1-0.20260415194851-5bbc91265726/go.mod h1:BQSeyvNOQNopE6GQllko4owZAO8wGNDYO1ZwYYd6wXI=
 github.com/oklog/run v1.1.0 h1:GEenZ1cK0+q0+wsJew9qUg/DyD8k3JzYsZAi5gYi2mA=
 github.com/oklog/run v1.1.0/go.mod h1:sVPdnTZT1zYwAJeCMu2Th4T21pA3FPOQRfWjQlk7DVU=
 github.com/onsi/ginkgo/v2 v2.22.2 h1:/3X8Panh8/WwhU/3Ssa6rCKqPLuAkVY2I0RoyDLySlU=
