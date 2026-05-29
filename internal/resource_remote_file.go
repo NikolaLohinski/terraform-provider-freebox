@@ -361,7 +361,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				MarkdownDescription: "Path to the file on the Freebox",
 				Required:            true,
 				Validators: []validator.String{
-					models.FilePathValidator(),
+					models.FilePathValidator(path.Root("destination_path")),
 				},
 			},
 			"source_url": schema.StringAttribute{
@@ -369,7 +369,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            false,
 				Optional:            true,
 				Validators: []validator.String{
-					models.DownloadURLValidator(),
+					models.DownloadURLValidator(path.Root("source_url")),
 					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file"), path.MatchRoot("source_content")),
 				},
 				PlanModifiers: []planmodifier.String{
@@ -411,7 +411,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Optional:            true,
 				Computed:            true,
 				Validators: []validator.String{
-					models.ChecksumValidator(),
+					models.ChecksumValidator(path.Root("checksum")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
