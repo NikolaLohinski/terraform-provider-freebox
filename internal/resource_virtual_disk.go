@@ -190,7 +190,7 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 				MarkdownDescription: "Path to the virtual disk on the Freebox",
 				Required:            true,
 				Validators: []validator.String{
-					models.FilePathValidator(),
+					models.FilePathValidator(path.Root("path")),
 				},
 			},
 			"type": schema.StringAttribute{
@@ -211,7 +211,7 @@ func (v *virtualDiskResource) Schema(ctx context.Context, req resource.SchemaReq
 				Optional:            true,
 				Computed:            false,
 				Validators: []validator.String{
-					models.FilePathValidator(),
+					models.FilePathValidator(path.Root("resize_from")),
 					stringvalidator.ConflictsWith(path.MatchRoot("type")),
 				},
 			},
@@ -532,34 +532,34 @@ func (v *virtualDiskResource) Read(ctx context.Context, req resource.ReadRequest
 		"error": err,
 	})
 
+	if errors.Is(err, client.ErrPathNotFound) {
+		tflog.Debug(ctx, "Virtual disk is not found, removing the resource from the state", map[string]interface{}{
+			"error": err,
+		})
+
+		removed = true
+		resp.State.RemoveResource(ctx)
+		return
+	}
+
+	tflog.Warn(ctx, "Failed to get disk info", map[string]interface{}{
+		"error": err,
+	})
+
 	target := new(client.APIError)
 	if errors.As(err, &target) {
-		switch target.Code {
-		case freeboxTypes.DiskErrorNotFound:
-			tflog.Debug(ctx, "Virtual disk is not found, removing the resource from the state", map[string]interface{}{
-				"error": err,
-			})
-
-			removed = true
-			resp.State.RemoveResource(ctx)
-			return
-		case freeboxTypes.DiskErrorInfo:
+		if target.Code == freeboxTypes.DiskErrorInfo {
 			resp.Diagnostics.AddWarning("Failed to get virtual disk, It is probably in use", fmt.Sprintf("Path: %s, Error: %s", diskPath, err.Error()))
-			return
-		default:
-			tflog.Warn(ctx, "Failed to get disk info", map[string]interface{}{
-				"error": err,
-			})
-
-			fileInfo, err := v.client.GetFileInfo(ctx, diskPath)
-			if err != nil {
-				resp.Diagnostics.AddError("Failed to get file info", fmt.Sprintf("Path: %s, Error: %s", diskPath, err.Error()))
-				return
-			}
-
-			model.populateFromFileInfo(fileInfo)
 		}
 	}
+
+	fileInfo, err := v.client.GetFileInfo(ctx, diskPath)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to get file info", fmt.Sprintf("Path: %s, Error: %s", diskPath, err.Error()))
+		return
+	}
+
+	model.populateFromFileInfo(fileInfo)
 }
 
 func (v *virtualDiskResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {

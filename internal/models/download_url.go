@@ -5,23 +5,27 @@ import (
 	"net/url"
 
 	"github.com/hashicorp/terraform-plugin-framework-validators/stringvalidator"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types/basetypes"
 )
 
-func DownloadURLValidator() validator.String {
+func DownloadURLValidator(pathAttribute path.Path) validator.String {
 	return &downloadURLValidator{
 		schemeValidator: stringvalidator.OneOf("http", "https", "ftp", "magnet"),
+		pathAttribute:   pathAttribute,
 	}
 }
 
 type downloadURLValidator struct {
 	schemeValidator validator.String
+	pathAttribute   path.Path
 }
 
 func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator.StringRequest, resp *validator.StringResponse) {
-	// The null case should be handled by required attribute or conflicts with other validators.
-	if req.ConfigValue.IsNull() {
+	var sourceURL basetypes.StringValue
+	if diags := req.Config.GetAttribute(ctx, s.pathAttribute, &sourceURL); diags.HasError() {
+		resp.Diagnostics.Append(diags...)
 		return
 	}
 	if req.ConfigValue.IsUnknown() {
@@ -31,14 +35,19 @@ func (s *downloadURLValidator) ValidateString(ctx context.Context, req validator
 		return
 	}
 
-	u, err := url.Parse(req.ConfigValue.ValueString())
+	// The null case should be handled by required attribute or conflicts with other validators.
+	if sourceURL.IsNull() || sourceURL.IsUnknown() {
+		return
+	}
+
+	u, err := url.Parse(sourceURL.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Invalid URL", err.Error())
 		return
 	}
 
 	s.schemeValidator.ValidateString(ctx, validator.StringRequest{
-		Path:           req.Path.AtName("scheme"),
+		Path:           s.pathAttribute.AtName("scheme"),
 		PathExpression: req.PathExpression.AtName("scheme"),
 		ConfigValue:    basetypes.NewStringValue(u.Scheme),
 		Config:         req.Config,
