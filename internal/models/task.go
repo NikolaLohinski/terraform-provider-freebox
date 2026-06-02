@@ -13,8 +13,9 @@ import (
 )
 
 type Task struct {
-	ID   types.Int64  `tfsdk:"id"`
-	Type types.String `tfsdk:"type"`
+	ID   types.Int64   `tfsdk:"id"`
+	Type types.String  `tfsdk:"type"`
+	Data types.Dynamic `tfsdk:"data"`
 }
 
 func (o Task) ResourceAttributes() map[string]schema.Attribute {
@@ -39,6 +40,10 @@ func (o Task) ResourceAttributes() map[string]schema.Attribute {
 				stringplanmodifier.UseStateForUnknown(),
 			},
 		},
+		"data": schema.DynamicAttribute{
+			Computed:            true,
+			MarkdownDescription: "The task data.",
+		},
 	}
 }
 
@@ -46,6 +51,7 @@ func (o Task) AttrTypes() map[string]attr.Type {
 	return map[string]attr.Type{
 		"id":   types.Int64Type,
 		"type": types.StringType,
+		"data": types.DynamicType,
 	}
 }
 
