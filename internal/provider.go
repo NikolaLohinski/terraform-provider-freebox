@@ -133,6 +133,8 @@ func (p *freeboxProvider) DataSources(ctx context.Context) []func() datasource.D
 	return []func() datasource.DataSource{
 		NewAPIVersionDataSource,
 		NewLanConfigDataSource,
+		NewLanInterfaceHostDataSource,
+		NewLanInterfaceHostsDataSource,
 		NewVirtualDiskDataSource,
 	}
 }
