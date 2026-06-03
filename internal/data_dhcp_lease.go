@@ -33,7 +33,7 @@ func (v *dhcpLeaseDataSource) Metadata(ctx context.Context, req datasource.Metad
 
 func (v *dhcpLeaseDataSource) Schema(ctx context.Context, req datasource.SchemaRequest, resp *datasource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a virtual machine instance within a Freebox. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
+		MarkdownDescription: "Get a DHCP static lease by MAC address.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -100,7 +100,10 @@ func (v *dhcpLeaseDataSource) Read(ctx context.Context, req datasource.ReadReque
 	if err != nil {
 		var apiErr *client.APIError
 		if errors.As(err, &apiErr) && apiErr.Code == "noent" {
-			resp.State.RemoveResource(ctx)
+			resp.Diagnostics.AddError(
+				"DHCP lease not found",
+				fmt.Sprintf("No DHCP static lease found with MAC address %q", model.Mac.ValueString()),
+			)
 			return
 		}
 

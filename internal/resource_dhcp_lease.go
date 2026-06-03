@@ -46,9 +46,13 @@ type dhcpLeaseModel struct {
 	Mac      basetypes.StringValue `tfsdk:"mac"`
 }
 
-func (v *dhcpLeaseModel) fromLanInterfaceHost(lanInterfaceHost freeboxTypes.LanInterfaceHost) (diagnostics diag.Diagnostics) {
-	v.ID = basetypes.NewStringValue(lanInterfaceHost.ID)
-	return diagnostics
+func (v *dhcpLeaseModel) fromLanInterfaceHost(ctx context.Context, c client.Client, lanInterfaceHost freeboxTypes.LanInterfaceHost) (diagnostics diag.Diagnostics) {
+	dhcpLease, err := c.GetDHCPStaticLease(ctx, lanInterfaceHost.ID)
+	if err != nil {
+		diagnostics.AddError("Failed to read DHCP lease after write", err.Error())
+		return
+	}
+	return v.fromDHCPStaticLeaseInfo(dhcpLease)
 }
 
 func (v *dhcpLeaseModel) fromDHCPStaticLeaseInfo(dhcpLeaseInfo freeboxTypes.DHCPStaticLeaseInfo) (diagnostics diag.Diagnostics) {
@@ -94,7 +98,7 @@ func (v *dhcpLeaseResource) Metadata(ctx context.Context, req resource.MetadataR
 
 func (v *dhcpLeaseResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages a virtual machine instance within a Freebox. See the [Freebox blog](https://dev.freebox.fr/blog/?p=5450) for additional details",
+		MarkdownDescription: "Manages a DHCP static lease on the Freebox.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -197,7 +201,7 @@ func (v *dhcpLeaseResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	if d := model.fromLanInterfaceHost(lanInterfaceHost); d.HasError() {
+	if d := model.fromLanInterfaceHost(ctx, v.client, lanInterfaceHost); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	}
@@ -261,7 +265,7 @@ func (v *dhcpLeaseResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	if d := newModel.fromLanInterfaceHost(lanInterfaceHost); d.HasError() {
+	if d := newModel.fromLanInterfaceHost(ctx, v.client, lanInterfaceHost); d.HasError() {
 		resp.Diagnostics.Append(d...)
 		return
 	}
