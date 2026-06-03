@@ -2,6 +2,7 @@ package internal_test
 
 import (
 	"fmt"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -364,6 +365,29 @@ var _ = Describe("resource \"freebox_port_forwarding\" { ... }", func() {
 						return nil
 					},
 				})
+			})
+		})
+	})
+
+	Context("schema validation", func() {
+		It("should reject setting host in config because it is read-only", func(ctx SpecContext) {
+			resource.UnitTest(GinkgoT(), resource.TestCase{
+				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+				Steps: []resource.TestStep{
+					{
+						PlanOnly: true,
+						Config: providerBlock + `
+							resource "freebox_port_forwarding" "test" {
+								enabled          = true
+								ip_protocol      = "tcp"
+								target_ip        = "192.168.1.1"
+								port_range_start = 8080
+								host             = {}
+							}
+						`,
+						ExpectError: regexp.MustCompile(`host`),
+					},
+				},
 			})
 		})
 	})

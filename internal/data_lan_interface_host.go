@@ -119,7 +119,7 @@ func (a *LanInterfaceHostDataSource) Read(ctx context.Context, req datasource.Re
 	if err != nil {
 		resp.Diagnostics.AddError(
 			"Failed to get host of a LAN interface",
-			fmt.Sprintf("Failed to get host of a LAN interface at %q: %s", interfaceName, hostId, err),
+			fmt.Sprintf("Failed to get host of a LAN interface %q at %q: %s", hostId, interfaceName, err),
 		)
 		return
 	}
