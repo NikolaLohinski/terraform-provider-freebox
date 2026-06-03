@@ -51,27 +51,28 @@ func (m *lanConfigResourceModel) fromClientType(config freeboxTypes.LanConfig) {
 	m.Mode = basetypes.NewStringValue(config.Mode)
 }
 
-func (m *lanConfigResourceModel) toPayload() freeboxTypes.LanConfig {
-	payload := freeboxTypes.LanConfig{}
+// applyToConfig overlays the non-null, non-unknown fields from the model onto base,
+// which preserves current device values for any field not explicitly set in config.
+func (m *lanConfigResourceModel) applyToConfig(base freeboxTypes.LanConfig) freeboxTypes.LanConfig {
 	if !m.IP.IsNull() && !m.IP.IsUnknown() {
-		payload.IP = m.IP.ValueString()
+		base.IP = m.IP.ValueString()
 	}
 	if !m.Name.IsNull() && !m.Name.IsUnknown() {
-		payload.Name = m.Name.ValueString()
+		base.Name = m.Name.ValueString()
 	}
 	if !m.NameDNS.IsNull() && !m.NameDNS.IsUnknown() {
-		payload.NameDNS = m.NameDNS.ValueString()
+		base.NameDNS = m.NameDNS.ValueString()
 	}
 	if !m.NameMDNS.IsNull() && !m.NameMDNS.IsUnknown() {
-		payload.NameMDNS = m.NameMDNS.ValueString()
+		base.NameMDNS = m.NameMDNS.ValueString()
 	}
 	if !m.NameNetBIOS.IsNull() && !m.NameNetBIOS.IsUnknown() {
-		payload.NameNetBIOS = m.NameNetBIOS.ValueString()
+		base.NameNetBIOS = m.NameNetBIOS.ValueString()
 	}
 	if !m.Mode.IsNull() && !m.Mode.IsUnknown() {
-		payload.Mode = m.Mode.ValueString()
+		base.Mode = m.Mode.ValueString()
 	}
-	return payload
+	return base
 }
 
 func (v *lanConfigResource) Metadata(_ context.Context, req resource.MetadataRequest, resp *resource.MetadataResponse) {
@@ -167,7 +168,13 @@ func (v *lanConfigResource) Create(ctx context.Context, req resource.CreateReque
 		return
 	}
 
-	result, err := v.client.UpdateLanConfig(ctx, model.toPayload())
+	current, err := v.client.GetLanConfig(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to read LAN configuration", fmt.Sprintf("Failed to read LAN configuration: %s", err))
+		return
+	}
+
+	result, err := v.client.UpdateLanConfig(ctx, model.applyToConfig(current))
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update LAN configuration", fmt.Sprintf("Failed to update LAN configuration: %s", err))
 		return
@@ -205,7 +212,13 @@ func (v *lanConfigResource) Update(ctx context.Context, req resource.UpdateReque
 		return
 	}
 
-	result, err := v.client.UpdateLanConfig(ctx, model.toPayload())
+	current, err := v.client.GetLanConfig(ctx)
+	if err != nil {
+		resp.Diagnostics.AddError("Failed to read LAN configuration", fmt.Sprintf("Failed to read LAN configuration: %s", err))
+		return
+	}
+
+	result, err := v.client.UpdateLanConfig(ctx, model.applyToConfig(current))
 	if err != nil {
 		resp.Diagnostics.AddError("Failed to update LAN configuration", fmt.Sprintf("Failed to update LAN configuration: %s", err))
 		return
