@@ -54,6 +54,7 @@ var _ = Describe(`data "freebox_system_info" { ... }`, func() {
 							Expect(state["temp_cpub"]).To(Equal(fmt.Sprintf("%d", systemInfo.TempCPUB)))
 							Expect(state["temp_sw"]).To(Equal(fmt.Sprintf("%d", systemInfo.TempSW)))
 							Expect(state["fan_rpm"]).To(Equal(fmt.Sprintf("%d", systemInfo.FanRPM)))
+							Expect(state["box_authenticated"]).To(Equal(fmt.Sprintf("%t", systemInfo.BoxAuthenticated)))
 							Expect(state["user_main_storage"]).To(Equal(systemInfo.UserMainStorage))
 
 							return nil
