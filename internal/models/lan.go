@@ -17,11 +17,11 @@ type LanHostL2IdentModel struct {
 func (o LanHostL2IdentModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"id": schema.StringAttribute{
-			Optional:            true,
+			Computed:            true,
 			MarkdownDescription: "ID of the L2 ident",
 		},
 		"type": schema.StringAttribute{
-			Optional:            true,
+			Computed:            true,
 			MarkdownDescription: "Type of the L2 ident",
 		},
 	}
@@ -170,7 +170,7 @@ func (o LanHostModel) FromClientType(host freeboxTypes.LanInterfaceHost) basetyp
 	if host.FirstActivity.IsZero() {
 		firstActivityValue = basetypes.NewFloat64Null()
 	} else {
-		firstActivityValue = basetypes.NewFloat64Value(float64(host.FirstActivity.UnixMicro() / 1000000))
+		firstActivityValue = basetypes.NewFloat64Value(float64(host.FirstActivity.UnixMicro()) / 1_000_000.0)
 	}
 
 	var networkControlValue basetypes.ObjectValue
@@ -209,19 +209,19 @@ type LanHostL3ConnectivityModel struct {
 func (o LanHostL3ConnectivityModel) ResourceAttributes() map[string]schema.Attribute {
 	return map[string]schema.Attribute{
 		"address": schema.StringAttribute{
-			Optional:            true,
+			Computed:            true,
 			MarkdownDescription: "Address of the L3 connectivity",
 		},
 		"active": schema.BoolAttribute{
-			Optional:            true,
+			Computed:            true,
 			MarkdownDescription: "Whether the L3 connectivity is active",
 		},
 		"reachable": schema.BoolAttribute{
-			Optional:            true,
+			Computed:            true,
 			MarkdownDescription: "Whether the L3 connectivity is reachable",
 		},
 		"type": schema.StringAttribute{
-			Optional:            true,
+			Computed:            true,
 			MarkdownDescription: "Type of the L3 connectivity",
 		},
 	}
