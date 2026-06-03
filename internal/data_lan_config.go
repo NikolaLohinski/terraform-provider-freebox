@@ -70,7 +70,7 @@ func (a *LanConfigDataSource) Schema(ctx context.Context, req datasource.SchemaR
 					stringvalidator.All(
 						stringvalidator.LengthAtMost(16),
 						stringvalidator.RegexMatches(
-							regexp.MustCompile(`[^\/:*?"<>|]`),
+							regexp.MustCompile(`^[^\/:*?"<>|]+$`),
 							`Cannot contain forbidden characters : \ / : * ? < > |`,
 						),
 					),
