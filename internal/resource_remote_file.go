@@ -426,6 +426,9 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Validators: []validator.String{
 					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_remote_file"), path.MatchRoot("source_content")),
 				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"checksum": schema.StringAttribute{
 				MarkdownDescription: "Checksum to verify the hash of the downloaded file",
@@ -727,13 +730,16 @@ func (v *remoteFileResource) createParentDirectories(ctx context.Context, model 
 					diagnostics.AddWarning("Failed to inspect file", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
 					return
 				} else if fileInfo.Type == freeboxTypes.FileTypeDirectory {
-					parent = newParent
+					parent = go_path.Join(parent, path)
 					continue
 				}
 
 				diagnostics.AddError("Failed to create parent directories", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
 				return
 			}
+
+			diagnostics.AddError("Failed to create directory", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
+			return
 		}
 
 		parent = newParent
