@@ -1,0 +1,1 @@
+terraform import freebox_lan_config.example lan_config
