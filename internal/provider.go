@@ -135,6 +135,7 @@ func (p *freeboxProvider) DataSources(ctx context.Context) []func() datasource.D
 		NewAPIVersionDataSource,
 		NewDhcpLeaseDataSource,
 		NewDhcpLeasesDataSource,
+		NewLanConfigDataSource,
 		NewLanInterfaceHostDataSource,
 		NewLanInterfaceHostsDataSource,
 		NewVirtualDiskDataSource,
