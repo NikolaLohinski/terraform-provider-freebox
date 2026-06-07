@@ -139,6 +139,7 @@ func (p *freeboxProvider) DataSources(ctx context.Context) []func() datasource.D
 		NewLanInterfaceHostDataSource,
 		NewLanInterfaceHostsDataSource,
 		NewVirtualDiskDataSource,
+		NewVMDistributionsDataSource,
 		NewLanInterfacesDataSource,
 		NewSystemInfoDataSource,
 	}
