@@ -77,7 +77,7 @@ Read-Only:
 <a id="nestedatt--host--l2ident"></a>
 ### Nested Schema for `host.l2ident`
 
-Optional:
+Read-Only:
 
 - `id` (String) ID of the L2 ident
 - `type` (String) Type of the L2 ident
@@ -86,7 +86,7 @@ Optional:
 <a id="nestedatt--host--l3connectivities"></a>
 ### Nested Schema for `host.l3connectivities`
 
-Optional:
+Read-Only:
 
 - `active` (Boolean) Whether the L3 connectivity is active
 - `address` (String) Address of the L3 connectivity
@@ -97,7 +97,7 @@ Optional:
 <a id="nestedatt--host--names"></a>
 ### Nested Schema for `host.names`
 
-Optional:
+Read-Only:
 
 - `name` (String) Name of the host
 - `source` (String) Source of the host

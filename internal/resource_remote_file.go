@@ -2,8 +2,13 @@ package internal
 
 import (
 	"context"
+	"crypto"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
+	"os"
 	go_path "path"
 	"strings"
 	"time"
@@ -14,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/booldefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/objectdefault"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
@@ -52,6 +58,8 @@ type remoteFileModel struct {
 	SourceRemoteFile types.String `tfsdk:"source_remote_file"`
 	// SourceContent is the file content in bytes.
 	SourceContent types.String `tfsdk:"source_content"`
+	// SourceLocalFile is the local file path.
+	SourceLocalFile types.String `tfsdk:"source_local_file"`
 
 	// Checksum is the file checksum.
 	// Verify the hash of the downloaded file.
@@ -66,6 +74,9 @@ type remoteFileModel struct {
 
 	// Extract is whether to extract the file after downloading.
 	Extract types.Object `tfsdk:"extract"`
+
+	// Parents is whether to create parent directories.
+	Parents types.Bool `tfsdk:"parents"`
 }
 
 func (o remoteFileModel) AttrTypes() map[string]attr.Type {
@@ -74,10 +85,12 @@ func (o remoteFileModel) AttrTypes() map[string]attr.Type {
 		"source_url":         types.StringType,
 		"source_remote_file": types.StringType,
 		"source_content":     types.StringType,
+		"source_local_file":        types.StringType,
 		"checksum":           types.StringType,
 		"extract":            types.ObjectType{}.WithAttributeTypes(remoteFileExtractModel{}.AttrTypes()),
 		"authentication":     types.ObjectType{}.WithAttributeTypes(remoteFileModelAuthenticationsModel{}.AttrTypes()),
 		"polling":            types.ObjectType{}.WithAttributeTypes(remoteFilePollingModel{}.AttrTypes()),
+		"parents":            types.BoolType,
 	}
 }
 
@@ -370,7 +383,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Optional:            true,
 				Validators: []validator.String{
 					models.DownloadURLValidator(path.Root("source_url")),
-					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file"), path.MatchRoot("source_content")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_remote_file"), path.MatchRoot("source_content"), path.MatchRoot("source_local_file")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -385,7 +398,7 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            false,
 				Optional:            true,
 				Validators: []validator.String{
-					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_content")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_content"), path.MatchRoot("source_local_file")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
@@ -400,7 +413,18 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				Required:            false,
 				Optional:            true,
 				Validators: []validator.String{
-					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_remote_file")),
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_remote_file"), path.MatchRoot("source_local_file")),
+				},
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
+			},
+			"source_local_file": schema.StringAttribute{
+				MarkdownDescription: "The path to the file to upload",
+				Required:            false,
+				Optional:            true,
+				Validators: []validator.String{
+					stringvalidator.ConflictsWith(path.MatchRoot("source_url"), path.MatchRoot("source_remote_file"), path.MatchRoot("source_content")),
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
@@ -415,26 +439,84 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				},
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
-						if rrifr.RequiresReplace {
+						var currentChecksum, plannedChecksum basetypes.StringValue
+						var plannedContent, plannedLocalFilePath basetypes.StringValue
+
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("source_content"), &plannedContent)...)
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("source_local_file"), &plannedLocalFilePath)...)
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
+						rrifr.Diagnostics.Append(sr.State.GetAttribute(ctx, path.Root("checksum"), &currentChecksum)...)
+
+						if (plannedContent.IsNull() || plannedContent.IsUnknown()) && (plannedLocalFilePath.IsNull() || plannedLocalFilePath.IsUnknown()) {
 							return
 						}
 
-						var plannedChecksum basetypes.StringValue
-						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
-						rrifr.RequiresReplace = plannedChecksum.IsNull() || plannedChecksum.IsUnknown()
-					}, "", "Replace the remote file if the checksum is not defined"),
+						currentAlgo, _ := hashSpec(currentChecksum.ValueString())
+
+						var plannedHash string
+
+						switch {
+						case !plannedContent.IsNull() && !plannedContent.IsUnknown():
+							hash, err := localHashSpec(currentAlgo, strings.NewReader(plannedContent.ValueString()))
+							if err != nil {
+								rrifr.Diagnostics.AddWarning("Failed to compute checksum of source content", fmt.Sprintf("Algorithm: %s, Error: %s", currentAlgo, err.Error()))
+								return
+							}
+
+							plannedHash = hash
+						case !plannedLocalFilePath.IsNull() && !plannedLocalFilePath.IsUnknown():
+							localFile, err := os.OpenFile(plannedLocalFilePath.ValueString(), os.O_RDONLY, 0644)
+							if err != nil {
+								rrifr.Diagnostics.AddError("Failed to open source local file", fmt.Sprintf("Error: %s", err.Error()))
+								return
+							}
+							defer localFile.Close()
+
+							hash, err := localHashSpec(currentAlgo, localFile)
+							if err != nil {
+								rrifr.Diagnostics.AddWarning("Failed to compute checksum of source local file", fmt.Sprintf("Algorithm: %s, Error: %s", currentAlgo, err.Error()))
+								return
+							}
+
+							plannedHash = hash
+						}
+
+						if plannedChecksum.IsNull() || plannedChecksum.IsUnknown() {
+							rrifr.Diagnostics.Append(sr.Plan.SetAttribute(ctx, path.Root("checksum"), basetypes.NewStringValue(fmt.Sprintf("%s:%s", currentAlgo, plannedHash)))...)
+						} else {
+							originalPlannedAlgo, originalPlannedValue := hashSpec(plannedChecksum.ValueString())
+							if originalPlannedAlgo == currentAlgo {
+								if originalPlannedValue != plannedHash {
+									rrifr.Diagnostics.AddError("Checksum mismatch", fmt.Sprintf("Expected checksum %q, got %q", originalPlannedValue, plannedHash))
+								}
+							}
+						}
+					}, "", "If not defined, set the checksum from the source_content or source_local_file"),
 					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
 						if rrifr.RequiresReplace {
 							return
 						}
 
 						var currentChecksum, plannedChecksum basetypes.StringValue
+
 						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
 						rrifr.Diagnostics.Append(sr.State.GetAttribute(ctx, path.Root("checksum"), &currentChecksum)...)
+
 						currentAlgo, currentValue := hashSpec(currentChecksum.ValueString())
 						plannedAlgo, plannedValue := hashSpec(plannedChecksum.ValueString())
+
 						rrifr.RequiresReplace = currentAlgo != plannedAlgo || currentValue != plannedValue
 					}, "", "Replace the remote file if the checksum value changed"),
+					stringplanmodifier.RequiresReplaceIf(func(ctx context.Context, sr planmodifier.StringRequest, rrifr *stringplanmodifier.RequiresReplaceIfFuncResponse) {
+						if rrifr.RequiresReplace {
+							return
+						}
+
+						var plannedChecksum basetypes.StringValue
+
+						rrifr.Diagnostics.Append(sr.Plan.GetAttribute(ctx, path.Root("checksum"), &plannedChecksum)...)
+						rrifr.RequiresReplace = plannedChecksum.IsNull() || plannedChecksum.IsUnknown()
+					}, "", "Replace the remote file if the checksum is not defined"),
 				},
 			},
 			"extract": schema.SingleNestedAttribute{
@@ -457,6 +539,12 @@ func (v *remoteFileResource) Schema(ctx context.Context, req resource.SchemaRequ
 				MarkdownDescription: "Polling configuration",
 				Attributes:          remoteFilePollingModel{}.ResourceAttributes(),
 				Default:             objectdefault.StaticValue(remoteFilePollingModel{}.defaults()),
+			},
+			"parents": schema.BoolAttribute{
+				MarkdownDescription: "Whether to create parent directories",
+				Optional:            true,
+				Computed:            true,
+				Default:             booldefault.StaticBool(true),
 			},
 		},
 	}
@@ -541,7 +629,7 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 	if !model.Extract.IsNull() {
 		var extract *remoteFileExtractModel
 
-		if diags := model.Extract.As(context.Background(), &extract, basetypes.ObjectAsOptions{}); diags.HasError() {
+		if diags := model.Extract.As(ctx, &extract, basetypes.ObjectAsOptions{}); diags.HasError() {
 			resp.Diagnostics.Append(diags...)
 			return
 		}
@@ -610,6 +698,13 @@ func (v *remoteFileResource) Create(ctx context.Context, req resource.CreateRequ
 }
 
 func (v *remoteFileResource) create(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
+	if model.Parents.ValueBool() {
+		if diags := v.createParentDirectories(ctx, model); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
+		}
+	}
+
 	switch {
 	case !model.SourceURL.IsNull():
 		return v.createFromURL(ctx, state, model)
@@ -617,10 +712,39 @@ func (v *remoteFileResource) create(ctx context.Context, state providerdata.Sett
 		return v.createFromRemoteFile(ctx, state, model)
 	case !model.SourceContent.IsNull():
 		return v.createFromBytes(ctx, state, model)
+	case !model.SourceLocalFile.IsNull():
+		return v.createFromLocalFile(ctx, state, model)
 	default:
 		diagnostics.AddError("Invalid source", "Please provide a source URL, remote file path or content bytes")
 		return
 	}
+}
+
+func (v *remoteFileResource) createParentDirectories(ctx context.Context, model *remoteFileModel) (diagnostics diag.Diagnostics) {
+	var parent string = "/"
+	for _, path := range strings.Split(strings.TrimPrefix(go_path.Dir(model.DestinationPath.ValueString()), "/"), "/") {
+		newParent, err := v.client.CreateDirectory(ctx, parent, path)
+		if err != nil {
+			if errors.Is(err, client.ErrDestinationConflict) {
+				if fileInfo, err := v.client.GetFileInfo(ctx, go_path.Join(parent, path)); err != nil {
+					diagnostics.AddWarning("Failed to inspect file", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
+					return
+				} else if fileInfo.Type == freeboxTypes.FileTypeDirectory {
+					parent = go_path.Join(parent, path)
+					continue
+				}
+
+				diagnostics.AddError("Failed to create parent directories", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
+				return
+			}
+
+			diagnostics.AddError("Failed to create directory", fmt.Sprintf("Path: %s, Error: %s", go_path.Join(parent, path), err.Error()))
+			return
+		}
+
+		parent = newParent
+	}
+	return
 }
 
 func (v *remoteFileResource) createFromURL(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
@@ -794,6 +918,113 @@ func (v *remoteFileResource) createFromBytes(ctx context.Context, state provider
 	}
 
 	return nil
+}
+
+func (v *remoteFileResource) createFromLocalFile(ctx context.Context, state providerdata.Setter, model *remoteFileModel) (diagnostics diag.Diagnostics) {
+	localFilePath := model.SourceLocalFile.ValueString()
+	localFile, err := os.OpenFile(localFilePath, os.O_RDONLY, 0644)
+	if err != nil {
+		diagnostics.AddError("Failed to open local file", err.Error())
+		return
+	}
+	defer func () {
+		if err := localFile.Close(); err != nil {
+			tflog.Warn(ctx, "Failed to close writer", map[string]interface{}{
+				"error": err.Error(),
+			})
+		}
+	}()
+
+	fileInfo, err := localFile.Stat()
+	if err != nil {
+		diagnostics.AddError("Failed to get local file info", err.Error())
+		return
+	}
+
+	var polling remoteFilePollingModel
+
+	if diags := model.Polling.As(ctx, &polling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	var uploadPolling models.Polling
+
+	if diags := polling.Upload.As(ctx, &uploadPolling, basetypes.ObjectAsOptions{}); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	timeout, diags := uploadPolling.Timeout.ValueGoDuration()
+	if diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	writer, taskID, err := v.client.FileUploadStart(ctx, freeboxTypes.FileUploadStartActionInput{
+		Dirname: freeboxTypes.Base64Path(go_path.Dir(model.DestinationPath.ValueString())),
+		Filename: go_path.Base(model.DestinationPath.ValueString()),
+		Force: freeboxTypes.FileUploadStartActionForceOverwrite,
+		Size: int(fileInfo.Size()),
+	})
+	if err != nil {
+		diagnostics.AddError("Failed to upload file", err.Error())
+		return
+	}
+
+	func (writer io.WriteCloser, reader io.ReadCloser) {
+		defer func () {
+			if err := writer.Close(); err != nil {
+				tflog.Warn(ctx, "Failed to close writer", map[string]interface{}{
+					"error": err.Error(),
+				})
+			} else {
+				tflog.Info(ctx, "Writer closed", map[string]interface{}{
+					"task.id": taskID,
+				})
+			}
+		}()
+
+		if diags := providerdata.SetCurrentTask(ctx, state, models.TaskTypeUpload, taskID); diags.HasError() {
+			diagnostics.Append(diags...)
+			return
+		}
+
+		size, err := io.Copy(writer, reader)
+		if err != nil {
+			diagnostics.AddError("Failed to upload local file content", err.Error())
+			return
+		}
+
+		tflog.Info(ctx, "Uploaded local file content", map[string]interface{}{
+			"task.id": taskID,
+			"size": size,
+		})
+	}(writer, localFile)
+
+	if diags := waitForUploadTask(ctx, v.client, taskID, uploadPolling); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	tflog.Info(ctx, "Upload task completed", map[string]interface{}{
+		"task.id": taskID,
+	})
+
+	if err := stopAndDeleteUploadTask(ctx, v.client, taskID); err != nil {
+		diagnostics.AddError("Failed to stop and delete upload task", fmt.Sprintf("Task %d, Error: %s", taskID, err.Error()))
+		return
+	}
+
+	if diags := providerdata.UnsetCurrentTask(ctx, state); diags.HasError() {
+		diagnostics.Append(diags...)
+		return
+	}
+
+	return
 }
 
 func (v *remoteFileResource) Read(ctx context.Context, req resource.ReadRequest, resp *resource.ReadResponse) {
@@ -1254,6 +1485,29 @@ func (v *remoteFileResource) ImportState(ctx context.Context, req resource.Impor
 	}
 
 	model.setChecksum(hMethod, hash)
+}
+
+func localHashSpec(algorithm string, content io.Reader) (string, error) {
+	var h hash.Hash
+
+	switch algorithm {
+	case string(freeboxTypes.HashTypeMD5):
+		h = crypto.MD5.New()
+	case string(freeboxTypes.HashTypeSHA1):
+		h = crypto.SHA1.New()
+	case string(freeboxTypes.HashTypeSHA256):
+		h = crypto.SHA256.New()
+	case string(freeboxTypes.HashTypeSHA512):
+		h = crypto.SHA512.New()
+	default:
+		return "", fmt.Errorf("invalid algorithm: %s", algorithm)
+	}
+
+	if _, err := io.Copy(h, content); err != nil {
+		return "", err
+	}
+
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 func hashSpec(checksum string) (string, string) {
