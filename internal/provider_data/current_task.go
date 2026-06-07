@@ -17,9 +17,27 @@ func UnsetCurrentTask(ctx context.Context, state Setter) (diagnotics diag.Diagno
 }
 
 func SetCurrentTask(ctx context.Context, state Setter, taskType models.TaskType, id int64) (diagnotics diag.Diagnostics) {
+	return SetCurrentTaskWithData(ctx, state, taskType, id, nil)
+}
+
+func SetCurrentTaskWithData(ctx context.Context, state Setter, taskType models.TaskType, id int64, data basetypes.DynamicValuable) (diagnotics diag.Diagnostics) {
+	typedData := basetypes.NewDynamicUnknown()
+	if data != nil {
+		d, diags := data.ToDynamicValue(ctx)
+		if diags.HasError() {
+			diagnotics.Append(diags...)
+			return
+		}
+
+		typedData = d
+	} else {
+		typedData = basetypes.NewDynamicNull()
+	}
+
 	taskBytes, err := json.Marshal(&models.Task{
 		ID:   basetypes.NewInt64Value(id),
 		Type: basetypes.NewStringValue(string(taskType)),
+		Data: typedData,
 	})
 	if err != nil {
 		diagnotics.AddError("Failed to marshal task", fmt.Sprintf("Task: %d, Type: %s, Errorf: %v", id, taskType, err))

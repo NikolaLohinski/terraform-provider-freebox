@@ -7,6 +7,7 @@ import (
 
 	"github.com/hashicorp/terraform-plugin-framework/datasource"
 	"github.com/hashicorp/terraform-plugin-framework/datasource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/schema/validator"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/nikolalohinski/free-go/client"
@@ -43,7 +44,7 @@ func (a *VirtualDiskDataSource) Schema(ctx context.Context, req datasource.Schem
 				Required:            true,
 				MarkdownDescription: "Path to the virtual disk",
 				Validators: []validator.String{
-					models.FilePathValidator(),
+					models.FilePathValidator(path.Root("path")),
 				},
 			},
 			"type": schema.StringAttribute{
