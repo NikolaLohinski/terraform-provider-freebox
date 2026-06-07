@@ -17,15 +17,15 @@ output "leases" {
 
 ### Read-Only
 
-- `leases` (Attributes List) List of DHCP leases (see [below for nested schema](#nestedatt--leases))
+- `leases` (List of Object) List of DHCP leases (see [below for nested schema](#nestedatt--leases))
 
 <a id="nestedatt--leases"></a>
 ### Nested Schema for `leases`
 
 Read-Only:
 
-- `comment` (String) Comment of the DHCP lease
-- `hostname` (String) Hostname of the target device
-- `id` (String) Unique identifier of the DHCP lease
-- `ip` (String) IP address to assign to the target device
-- `mac` (String) MAC address of the target device
+- `comment` (String)
+- `hostname` (String)
+- `id` (String)
+- `ip` (String)
+- `mac` (String)

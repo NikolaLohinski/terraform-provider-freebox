@@ -4,8 +4,6 @@ This resource downloads a file from a URL and stores it on the Freebox.
 
 ## Example
 
-Download a file from a URL:
-
 ```terraform
 resource "freebox_remote_file" "example" {
   source_url       = "https://example.com/file.txt"
@@ -15,16 +13,6 @@ resource "freebox_remote_file" "example" {
 
 output "filesystem_task_id" {
   value = resource.freebox_remote_file.example.task_id
-}
-```
-
-Upload a local file:
-
-```terraform
-resource "freebox_remote_file" "upload" {
-  source_local_file = "/path/to/local/file.txt"
-  destination_path  = "/Freebox/VMs/file.txt"
-  checksum          = "sha256:0a0a9f2a6772942557ab5347d9b0e6b8"
 }
 ```
 
@@ -40,10 +28,10 @@ resource "freebox_remote_file" "upload" {
 - `authentication` (Attributes) Authentication credentials to use for the operation (see [below for nested schema](#nestedatt--authentication))
 - `checksum` (String) Checksum to verify the hash of the downloaded file
 - `extract` (Attributes) Whether to extract the file after downloading (see [below for nested schema](#nestedatt--extract))
+- `parents` (Boolean) Whether to create parent directories
 - `polling` (Attributes) Polling configuration (see [below for nested schema](#nestedatt--polling))
-- `parents` (Boolean) If true (default), create parent directories as needed
 - `source_content` (String) The content of the file
-- `source_local_file` (String) The path to a local file to upload to the Freebox
+- `source_local_file` (String) The path to the file to upload
 - `source_remote_file` (String) The path to the file on the Freebox to copy
 - `source_url` (String) The URL of the file to download
 

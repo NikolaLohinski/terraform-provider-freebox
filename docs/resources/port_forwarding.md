@@ -97,7 +97,7 @@ Read-Only:
 <a id="nestedatt--host--names"></a>
 ### Nested Schema for `host.names`
 
-Read-Only:
+Optional:
 
 - `name` (String) Name of the host
 - `source` (String) Source of the host
