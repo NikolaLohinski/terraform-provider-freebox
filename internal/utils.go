@@ -384,6 +384,10 @@ func waitForUploadTask(ctx context.Context, c client.Client, taskID int64, polli
 	for {
 		task, taskErr := c.GetUploadTask(ctx, taskID)
 		if taskErr != nil {
+			if errors.Is(taskErr, client.ErrTaskNotFound) {
+				return nil // Done
+			}
+
 			diagnostics.AddError("Failed to get upload task", taskErr.Error())
 		} else {
 			currentStatus = string(task.Status)
