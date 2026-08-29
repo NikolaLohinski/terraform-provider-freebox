@@ -98,3 +98,5 @@ require (
 	google.golang.org/grpc v1.63.2 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 )
+
+replace github.com/nikolalohinski/free-go => github.com/LAP-Arcade/free-go v0.0.0-20260829223200-018a20008a3f
