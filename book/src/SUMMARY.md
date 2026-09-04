@@ -11,6 +11,7 @@
     - [freebox_dhcp_lease](./resources/dhcp_lease.md) 
     - [freebox_lan_config](./resources/lan_config.md)
     - [freebox_port_forwarding](./resources/port_forwarding.md)
+    - [freebox_remote_directory](./resources/remote_directory.md)
     - [freebox_remote_file](./resources/remote_file.md)
     - [freebox_virtual_disk](./resources/virtual_disk.md)
     - [freebox_virtual_machine](./resources/virtual_machine.md)
