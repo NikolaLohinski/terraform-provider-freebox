@@ -42,6 +42,7 @@ type vpnServerModel struct {
 	Cipher          types.String `tfsdk:"cipher"`
 	DisableFragment types.Bool   `tfsdk:"disable_fragment"`
 	UseTCP          types.Bool   `tfsdk:"use_tcp"`
+	MTU             types.Int64  `tfsdk:"mtu"`
 	IPStart         types.String `tfsdk:"ip_start"`
 	IPEnd           types.String `tfsdk:"ip_end"`
 	IP6Start        types.String `tfsdk:"ip6_start"`
@@ -60,6 +61,11 @@ func (m *vpnServerModel) toPayload() freeboxTypes.VPNServerConfig {
 			Cipher:          freeboxTypes.OpenVPNCipher(m.Cipher.ValueString()),
 			DisableFragment: m.DisableFragment.ValueBool(),
 			UseTCP:          m.UseTCP.ValueBool(),
+		}
+	}
+	if m.VPNID.ValueString() == string(freeboxTypes.VPNServerIDWireguard) {
+		payload.ConfWireguard = &freeboxTypes.WireguardConfig{
+			MTU: m.MTU.ValueInt64(),
 		}
 	}
 	return payload
@@ -83,6 +89,11 @@ func (m *vpnServerModel) fromClientType(id freeboxTypes.VPNServerID, config free
 		m.DisableFragment = basetypes.NewBoolNull()
 		m.UseTCP = basetypes.NewBoolNull()
 	}
+	if config.ConfWireguard != nil {
+		m.MTU = basetypes.NewInt64Value(config.ConfWireguard.MTU)
+	} else {
+		m.MTU = basetypes.NewInt64Null()
+	}
 	m.IPStart = basetypes.NewStringValue(config.IPStart)
 	m.IPEnd = basetypes.NewStringValue(config.IPEnd)
 	m.IP6Start = basetypes.NewStringValue(config.IP6Start)
@@ -95,7 +106,7 @@ func (v *vpnServerResource) Metadata(ctx context.Context, req resource.MetadataR
 
 func (v *vpnServerResource) Schema(ctx context.Context, req resource.SchemaRequest, resp *resource.SchemaResponse) {
 	resp.Schema = schema.Schema{
-		MarkdownDescription: "Manages one of the built-in VPN server configurations on the Freebox (`pptp`, `openvpn_routed` or `openvpn_bridge`). This is a singleton resource per `vpn_id`: it configures an existing server slot rather than creating a new one. Destroying this resource disables that VPN server.",
+		MarkdownDescription: "Manages one of the built-in VPN server configurations on the Freebox (`pptp`, `openvpn_routed`, `openvpn_bridge` or `wireguard`). This is a singleton resource per `vpn_id`: it configures an existing server slot rather than creating a new one. Destroying this resource disables that VPN server.",
 		Attributes: map[string]schema.Attribute{
 			"id": schema.StringAttribute{
 				Computed:            true,
@@ -105,7 +116,7 @@ func (v *vpnServerResource) Schema(ctx context.Context, req resource.SchemaReque
 				},
 			},
 			"vpn_id": schema.StringAttribute{
-				MarkdownDescription: "Which VPN server to manage: `pptp`, `openvpn_routed` or `openvpn_bridge`",
+				MarkdownDescription: "Which VPN server to manage: `pptp`, `openvpn_routed`, `openvpn_bridge` or `wireguard`",
 				Optional:            true,
 				Computed:            true,
 				Default:             stringdefault.StaticString(string(freeboxTypes.VPNServerIDOpenVPNRouted)),
@@ -157,6 +168,11 @@ func (v *vpnServerResource) Schema(ctx context.Context, req resource.SchemaReque
 			},
 			"use_tcp": schema.BoolAttribute{
 				MarkdownDescription: "Use TCP instead of UDP (only relevant when vpn_id is openvpn_routed or openvpn_bridge)",
+				Optional:            true,
+				Computed:            true,
+			},
+			"mtu": schema.Int64Attribute{
+				MarkdownDescription: "Maximum transmission unit of the WireGuard interface (only relevant when vpn_id is wireguard)",
 				Optional:            true,
 				Computed:            true,
 			},
