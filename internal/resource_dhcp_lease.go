@@ -28,9 +28,17 @@ var (
 	_ resource.ResourceWithImportState = &dhcpLeaseResource{}
 )
 
-// dhcpLeaseHostname returns the hostname to store in state. When the Freebox API
-// has not yet learned a hostname (e.g. device still offline), it returns the MAC
-// address as a placeholder; in that case the configured value is preserved.
+// dhcpLeaseHostname returns the hostname to store in state on a Read/refresh.
+// When the Freebox API has not yet learned a hostname (e.g. device still
+// offline), it returns the MAC address as a placeholder; in that case the
+// configured value is preserved. Once the device has reported its own real
+// hostname, that value wins over the configured one — the Freebox does not
+// durably honor an arbitrary hostname, it gets overwritten by whatever the
+// device itself announces over DHCP (observed live as e.g. "vmc" or "lwip0"
+// overriding a configured "unknown-<mac>" value). That divergence must only
+// ever be surfaced here, from Read, where Terraform treats it as ordinary
+// drift (a diff shown on the next plan). It must never be surfaced from
+// Create/Update's own result — see fromLanInterfaceHost below for why.
 func dhcpLeaseHostname(dhcpLeaseInfo freeboxTypes.DHCPStaticLeaseInfo, configuredHostname string) string {
 	hostname := dhcpLeaseInfo.Hostname
 	if configuredHostname == "" {
@@ -66,7 +74,21 @@ func (v *dhcpLeaseModel) fromLanInterfaceHost(ctx context.Context, c client.Clie
 		diagnostics.AddError("Failed to read DHCP lease after write", err.Error())
 		return
 	}
-	return v.fromDHCPStaticLeaseInfo(dhcpLease, configuredHostname, configuredMAC)
+	diagnostics = v.fromDHCPStaticLeaseInfo(dhcpLease, configuredHostname, configuredMAC)
+	// Terraform requires Create/Update to return exactly the configured value
+	// for any attribute that was explicitly set in config — it is never valid
+	// for a provider to report a different value for a known, configured
+	// attribute (see Terraform's plan-modification consistency rules). The
+	// Freebox may silently override the hostname once the device announces its
+	// own over DHCP, but that divergence must only ever surface later, through
+	// a normal Read/refresh (ordinary drift), never from Create/Update's own
+	// result. So, unlike Read (which calls fromDHCPStaticLeaseInfo directly and
+	// keeps dhcpLeaseHostname's drift-aware value), pin Hostname back to the
+	// literal configured value here whenever one was given.
+	if configuredHostname != "" {
+		v.Hostname = basetypes.NewStringValue(configuredHostname)
+	}
+	return diagnostics
 }
 
 func (v *dhcpLeaseModel) fromDHCPStaticLeaseInfo(dhcpLeaseInfo freeboxTypes.DHCPStaticLeaseInfo, configuredHostname, configuredMAC string) (diagnostics diag.Diagnostics) {
@@ -158,9 +180,13 @@ func (v *dhcpLeaseResource) Schema(ctx context.Context, req resource.SchemaReque
 				},
 			},
 			"hostname": schema.StringAttribute{
-				Computed:            true,
-				Optional:            true,
-				MarkdownDescription: "Hostname of the target device",
+				Computed: true,
+				Optional: true,
+				MarkdownDescription: "Hostname of the target device. The Freebox does not durably honor an " +
+					"arbitrary value here: once the device talks to the box over DHCP, the Freebox overwrites " +
+					"this with whatever hostname the device itself announces, overriding the configured value. " +
+					"Create/Update always report the configured value when one is set (Terraform requires this); " +
+					"the Freebox's actual override, if any, only shows up later as drift on a subsequent plan.",
 				Validators: []validator.String{
 					stringvalidator.LengthAtLeast(1),
 				},
