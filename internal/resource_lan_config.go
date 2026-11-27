@@ -51,6 +51,40 @@ func (m *lanConfigResourceModel) fromClientType(config freeboxTypes.LanConfig) {
 	m.Mode = basetypes.NewStringValue(config.Mode)
 }
 
+// pinConfiguredFields overwrites m's fields with whatever was explicitly
+// configured in configured, for any field that had a non-null, non-unknown
+// value there. Terraform requires Create/Update to return exactly the
+// configured value for any attribute that was explicitly set in config — a
+// provider is never allowed to report a different value for a known,
+// configured attribute (see Terraform's plan-modification consistency
+// rules: https://developer.hashicorp.com/terraform/plugin/framework/resources/plan-modification#terraform-data-consistency-rules).
+// The Freebox does not necessarily echo back every field verbatim after a
+// write (e.g. the naming fields can be subject to server-side
+// normalization/truncation, similar in spirit to how freebox_dhcp_lease's
+// hostname can be overridden by the connected device), so any divergence
+// must only ever surface later, through a normal Read/refresh (ordinary
+// drift), never from Create/Update's own result.
+func (m *lanConfigResourceModel) pinConfiguredFields(configured lanConfigResourceModel) {
+	if !configured.IP.IsNull() && !configured.IP.IsUnknown() {
+		m.IP = configured.IP
+	}
+	if !configured.Name.IsNull() && !configured.Name.IsUnknown() {
+		m.Name = configured.Name
+	}
+	if !configured.NameDNS.IsNull() && !configured.NameDNS.IsUnknown() {
+		m.NameDNS = configured.NameDNS
+	}
+	if !configured.NameMDNS.IsNull() && !configured.NameMDNS.IsUnknown() {
+		m.NameMDNS = configured.NameMDNS
+	}
+	if !configured.NameNetBIOS.IsNull() && !configured.NameNetBIOS.IsUnknown() {
+		m.NameNetBIOS = configured.NameNetBIOS
+	}
+	if !configured.Mode.IsNull() && !configured.Mode.IsUnknown() {
+		m.Mode = configured.Mode
+	}
+}
+
 // applyToConfig overlays the non-null, non-unknown fields from the model onto base,
 // which preserves current device values for any field not explicitly set in config.
 func (m *lanConfigResourceModel) applyToConfig(base freeboxTypes.LanConfig) freeboxTypes.LanConfig {
@@ -167,6 +201,7 @@ func (v *lanConfigResource) Create(ctx context.Context, req resource.CreateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	configured := model
 
 	current, err := v.client.GetLanConfig(ctx)
 	if err != nil {
@@ -181,6 +216,7 @@ func (v *lanConfigResource) Create(ctx context.Context, req resource.CreateReque
 	}
 
 	model.fromClientType(result)
+	model.pinConfiguredFields(configured)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
@@ -211,6 +247,7 @@ func (v *lanConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	if resp.Diagnostics.HasError() {
 		return
 	}
+	configured := model
 
 	current, err := v.client.GetLanConfig(ctx)
 	if err != nil {
@@ -225,6 +262,7 @@ func (v *lanConfigResource) Update(ctx context.Context, req resource.UpdateReque
 	}
 
 	model.fromClientType(result)
+	model.pinConfiguredFields(configured)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &model)...)
 }
